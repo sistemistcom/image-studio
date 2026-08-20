@@ -1,14 +1,13 @@
-import sys
 import os
 import re
-import unicodedata
 import io
 import zipfile
-from datetime import datetime
-from pathlib import Path
-import requests
+import unicodedata
 import mimetypes
+from pathlib import Path
+from urllib.parse import quote
 
+import requests
 import boto3
 from botocore.config import Config
 from openpyxl import load_workbook, Workbook
@@ -17,20 +16,12 @@ import streamlit as st
 
 
 # =========================================================
-# STREAMLIT GÜVENLİK / SUNUCU AYARLARI
-# =========================================================
-
-os.environ["STREAMLIT_SERVER_ENABLE_CORS"] = "false"
-os.environ["STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION"] = "false"
-
-
-# =========================================================
 # SAYFA AYARLARI
 # =========================================================
 
 st.set_page_config(
     page_title="Sistemist Image Studio",
-    page_icon="▣",
+    page_icon="S",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -41,593 +32,495 @@ st.set_page_config(
 # =========================================================
 
 if "page" not in st.session_state:
-    st.session_state.page = "dashboard"
+    st.session_state.page = "home"
+
+
+def go_page(page_name):
+    st.session_state.page = page_name
 
 
 # =========================================================
-# TASARIM / CSS
+# TASARIM
 # =========================================================
 
-st.markdown(
-    """
-    <style>
+st.markdown("""
+<style>
 
-    /* -----------------------------------------------------
-       GENEL
-    ----------------------------------------------------- */
+/* =====================================================
+   GENEL
+===================================================== */
 
-    .stApp {
-        background:
-            radial-gradient(
-                circle at top right,
-                rgba(255, 106, 0, 0.06),
-                transparent 30%
-            ),
-            #090f18 !important;
-        color: #edf2f7 !important;
-    }
+.stApp {
+    background:
+        radial-gradient(circle at 85% 5%, rgba(255,106,0,.10), transparent 22%),
+        radial-gradient(circle at 20% 0%, rgba(59,130,246,.06), transparent 25%),
+        #0b1018 !important;
+    color: #eef4fb !important;
+}
 
-    html,
-    body,
-    [class*="css"] {
-        font-family:
-            Inter,
-            -apple-system,
-            BlinkMacSystemFont,
-            "Segoe UI",
-            sans-serif !important;
-    }
+#MainMenu,
+footer {
+    visibility: hidden;
+}
 
-    header[data-testid="stHeader"] {
-        background: transparent !important;
-    }
+header[data-testid="stHeader"] {
+    background: transparent !important;
+}
 
-    #MainMenu {
-        visibility: hidden !important;
-    }
+.block-container {
+    max-width: 1480px !important;
+    padding-top: 36px !important;
+    padding-bottom: 60px !important;
+}
 
-    footer {
-        visibility: hidden !important;
-    }
+h1, h2, h3, p, span, div {
+    font-family: Inter, Arial, sans-serif;
+}
 
-    [data-testid="stToolbar"] {
-        right: 20px !important;
-    }
+
+/* =====================================================
+   SIDEBAR
+===================================================== */
+
+[data-testid="stSidebar"] {
+    background:
+        linear-gradient(180deg, #111926 0%, #0b111a 100%) !important;
+    border-right: 1px solid #202d3d !important;
+    min-width: 285px !important;
+}
+
+[data-testid="stSidebar"] > div:first-child {
+    padding: 18px 14px 25px 14px !important;
+}
+
+
+/* =====================================================
+   LOGO
+===================================================== */
+
+.brand-wrap {
+    padding: 10px 8px 24px 8px;
+    border-bottom: 1px solid #243246;
+    margin-bottom: 20px;
+}
+
+.brand-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.brand-logo {
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: linear-gradient(135deg, #ff8b2b, #f05d00);
+    color: #fff;
+
+    font-size: 23px;
+    font-weight: 900;
+
+    box-shadow: 0 10px 30px rgba(255,106,0,.28);
+}
+
+.brand-name {
+    color: #ffffff;
+    font-size: 23px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    line-height: 1.1;
+}
+
+.brand-sub {
+    color: #ff8b2b;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 3px;
+    margin-top: 5px;
+}
+
+.menu-label {
+    color: #66778d;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    padding: 8px 9px 8px 9px;
+}
+
+
+/* =====================================================
+   SIDEBAR BUTONLARI
+===================================================== */
+
+[data-testid="stSidebar"] .stButton {
+    margin-bottom: 7px !important;
+}
+
+[data-testid="stSidebar"] .stButton > button {
+    width: 100% !important;
+    height: 47px !important;
+
+    background: #121c29 !important;
+    color: #b8c5d4 !important;
+
+    border: 1px solid transparent !important;
+    border-radius: 11px !important;
+
+    font-size: 14px !important;
+    font-weight: 600 !important;
+
+    text-align: left !important;
+    justify-content: flex-start !important;
+
+    padding-left: 16px !important;
+
+    box-shadow: none !important;
+}
+
+[data-testid="stSidebar"] .stButton > button:hover {
+    background: #192637 !important;
+    color: #ffffff !important;
+    border-color: #2a3d54 !important;
+}
+
+
+/* =====================================================
+   ANA BAŞLIK
+===================================================== */
+
+.main-title {
+    font-size: 34px;
+    line-height: 1.2;
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: -.8px;
+    margin-bottom: 8px;
+}
+
+.main-subtitle {
+    color: #8fa0b4;
+    font-size: 15px;
+    margin-bottom: 30px;
+}
+
+
+/* =====================================================
+   HERO
+===================================================== */
+
+.hero {
+    position: relative;
+    overflow: hidden;
+
+    padding: 34px;
+    border-radius: 22px;
+
+    background:
+        linear-gradient(135deg, rgba(255,106,0,.16), rgba(19,29,43,.97) 40%, rgba(14,21,31,.98));
+
+    border: 1px solid #2a3b50;
+
+    box-shadow: 0 20px 50px rgba(0,0,0,.20);
+
+    margin-bottom: 24px;
+}
+
+.hero-kicker {
+    display: inline-block;
+
+    color: #ff9b4b;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 2px;
+
+    margin-bottom: 12px;
+}
+
+.hero-title {
+    color: #ffffff;
+    font-size: 29px;
+    font-weight: 800;
+    line-height: 1.25;
+}
+
+.hero-text {
+    color: #9caec2;
+    font-size: 15px;
+    line-height: 1.7;
+    max-width: 700px;
+    margin-top: 12px;
+}
+
+
+/* =====================================================
+   KARTLAR
+===================================================== */
+
+.saas-card {
+    height: 100%;
+
+    background:
+        linear-gradient(145deg, #151f2d, #0f1723);
+
+    border: 1px solid #28384b;
+    border-radius: 18px;
+
+    padding: 26px;
+
+    box-shadow: 0 15px 35px rgba(0,0,0,.16);
+}
+
+.card-icon {
+    width: 54px;
+    height: 54px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    border-radius: 15px;
+
+    background: linear-gradient(
+        135deg,
+        rgba(255,106,0,.22),
+        rgba(255,106,0,.05)
+    );
+
+    border: 1px solid rgba(255,130,30,.22);
+
+    font-size: 25px;
+    margin-bottom: 20px;
+}
+
+.card-title {
+    color: #ffffff;
+    font-size: 19px;
+    font-weight: 750;
+    margin-bottom: 9px;
+}
+
+.card-text {
+    color: #8fa0b4;
+    font-size: 14px;
+    line-height: 1.65;
+}
+
+
+/* =====================================================
+   YÜKLEME ALANI
+===================================================== */
+
+.upload-box-title {
+    color: #ffffff;
+    font-size: 21px;
+    font-weight: 750;
+    margin-bottom: 7px;
+}
+
+.upload-box-text {
+    color: #8fa0b4;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+
+/* Streamlit uploader */
+
+[data-testid="stFileUploader"] section {
+    background: #111a26 !important;
+
+    border: 1.5px dashed #41556e !important;
+    border-radius: 16px !important;
+
+    padding: 25px 18px !important;
+}
+
+[data-testid="stFileUploader"] section:hover {
+    background: #142030 !important;
+    border-color: #ff7a18 !important;
+}
+
+[data-testid="stFileUploader"] section span,
+[data-testid="stFileUploader"] section small,
+[data-testid="stFileUploader"] section p,
+[data-testid="stFileUploader"] section div {
+    color: #c0ccda !important;
+}
+
+
+/* Yükleme dosya seç butonu */
+
+[data-testid="stFileUploader"] button {
+    background: #ff6a00 !important;
+    color: #ffffff !important;
+
+    border: none !important;
+    border-radius: 9px !important;
+
+    font-weight: 700 !important;
+}
+
+[data-testid="stFileUploader"] button:hover {
+    background: #e85f00 !important;
+    color: #ffffff !important;
+}
+
+
+/* =====================================================
+   ANA BUTONLAR
+===================================================== */
+
+.stButton > button {
+    min-height: 46px !important;
+
+    background: linear-gradient(135deg, #ff6a00, #ff8c32) !important;
+    color: #ffffff !important;
+
+    border: none !important;
+    border-radius: 11px !important;
+
+    font-weight: 750 !important;
+
+    box-shadow: 0 10px 24px rgba(255,106,0,.18) !important;
+}
+
+.stButton > button:hover {
+    background: linear-gradient(135deg, #e85f00, #ff7d1c) !important;
+    color: #ffffff !important;
+}
+
+
+/* =====================================================
+   INPUTLAR
+===================================================== */
+
+[data-testid="stTextInput"] input,
+[data-testid="stSelectbox"] input {
+    background: #0f1824 !important;
+    color: #ffffff !important;
+
+    border: 1px solid #34485f !important;
+    border-radius: 10px !important;
+}
+
+[data-testid="stTextInput"] label,
+[data-testid="stSelectbox"] label {
+    color: #b9c6d4 !important;
+    font-weight: 650 !important;
+}
+
+div[data-baseweb="select"] > div {
+    background: #0f1824 !important;
+    color: #ffffff !important;
+    border-color: #34485f !important;
+}
+
+
+/* =====================================================
+   EXPANDER
+===================================================== */
+
+[data-testid="stExpander"] {
+    background: #111a26 !important;
+    border: 1px solid #2b3d51 !important;
+    border-radius: 14px !important;
+}
+
+
+/* =====================================================
+   INFO / SUCCESS
+===================================================== */
+
+[data-testid="stAlert"] {
+    border-radius: 12px !important;
+}
+
+
+/* =====================================================
+   PRO KART
+===================================================== */
+
+.pro-card {
+    margin-top: 30px;
+    padding: 18px;
+
+    background:
+        linear-gradient(
+            135deg,
+            rgba(255,106,0,.14),
+            rgba(18,27,40,.95)
+        );
+
+    border: 1px solid rgba(255,130,30,.22);
+    border-radius: 15px;
+}
+
+.pro-title {
+    color: #ff9b4b;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+
+.pro-text {
+    color: #899bb0;
+    font-size: 12px;
+    margin-top: 8px;
+}
+
+.pro-status {
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 700;
+    margin-top: 8px;
+}
+
+.pro-line {
+    width: 100%;
+    height: 6px;
+    background: #2a384a;
+    border-radius: 10px;
+    margin-top: 12px;
+}
+
+.pro-line-fill {
+    width: 86%;
+    height: 6px;
+    background: linear-gradient(90deg, #ff6a00, #ff9a48);
+    border-radius: 10px;
+}
+
+
+/* =====================================================
+   MOBİL
+===================================================== */
+
+@media (max-width: 768px) {
 
     .block-container {
-        max-width: 1450px !important;
-        padding-top: 35px !important;
-        padding-bottom: 50px !important;
+        padding-top: 20px !important;
     }
 
-
-    /* -----------------------------------------------------
-       SIDEBAR
-    ----------------------------------------------------- */
-
-    section[data-testid="stSidebar"] {
-        background:
-            linear-gradient(
-                180deg,
-                #111925 0%,
-                #0c131d 100%
-            ) !important;
-
-        border-right:
-            1px solid #202d3d !important;
-
-        min-width: 280px !important;
+    .main-title {
+        font-size: 27px;
     }
 
-    section[data-testid="stSidebar"] > div:first-child {
-        padding:
-            20px 14px 25px 14px !important;
+    .hero {
+        padding: 24px;
     }
 
-    .brand-box {
-        padding:
-            18px 15px 24px 15px !important;
-
-        margin-bottom: 18px !important;
-
-        border-bottom:
-            1px solid #263446 !important;
+    .hero-title {
+        font-size: 23px;
     }
+}
 
-    .brand-row {
-        display: flex !important;
-        align-items: center !important;
-        gap: 12px !important;
-    }
-
-    .brand-logo-box {
-        width: 42px !important;
-        height: 42px !important;
-
-        border-radius: 12px !important;
-
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-
-        background:
-            linear-gradient(
-                135deg,
-                #ff8a24,
-                #e65c00
-            ) !important;
-
-        color: white !important;
-
-        font-size: 22px !important;
-
-        font-weight: 800 !important;
-
-        box-shadow:
-            0 10px 25px rgba(255, 106, 0, 0.20) !important;
-    }
-
-    .brand-title {
-        font-size: 22px !important;
-        font-weight: 800 !important;
-        letter-spacing: 1px !important;
-        color: #ffffff !important;
-        line-height: 1 !important;
-    }
-
-    .brand-subtitle {
-        margin-top: 6px !important;
-        color: #ff8a24 !important;
-        font-size: 10px !important;
-        font-weight: 700 !important;
-        letter-spacing: 3px !important;
-    }
-
-    .menu-section-title {
-        color: #64748b !important;
-        font-size: 10px !important;
-        font-weight: 800 !important;
-        letter-spacing: 2px !important;
-        margin:
-            20px 8px 8px 8px !important;
-    }
-
-
-    /* -----------------------------------------------------
-       SIDEBAR BUTONLARI
-    ----------------------------------------------------- */
-
-    section[data-testid="stSidebar"] .stButton {
-        margin-bottom: 4px !important;
-    }
-
-    section[data-testid="stSidebar"] .stButton > button {
-        width: 100% !important;
-
-        min-height: 45px !important;
-
-        background: transparent !important;
-
-        color: #aebccc !important;
-
-        border:
-            1px solid transparent !important;
-
-        border-radius: 10px !important;
-
-        text-align: left !important;
-
-        padding:
-            10px 14px !important;
-
-        font-size: 14px !important;
-
-        font-weight: 500 !important;
-
-        box-shadow: none !important;
-
-        transition:
-            background 0.2s ease,
-            color 0.2s ease,
-            border-color 0.2s ease !important;
-    }
-
-    section[data-testid="stSidebar"] .stButton > button:hover {
-        background: #182333 !important;
-        color: #ffffff !important;
-        border-color: #27374b !important;
-    }
-
-
-    /* -----------------------------------------------------
-       ANA SAYFA BAŞLIKLARI
-    ----------------------------------------------------- */
-
-    .page-title {
-        color: #f8fafc !important;
-        font-size: 30px !important;
-        font-weight: 750 !important;
-        letter-spacing: -0.5px !important;
-        margin-bottom: 5px !important;
-    }
-
-    .page-description {
-        color: #8fa0b5 !important;
-        font-size: 15px !important;
-        margin-bottom: 30px !important;
-    }
-
-
-    /* -----------------------------------------------------
-       KARTLAR
-    ----------------------------------------------------- */
-
-    .saas-card {
-        background:
-            linear-gradient(
-                145deg,
-                rgba(22, 33, 48, 0.98),
-                rgba(13, 21, 32, 0.98)
-            ) !important;
-
-        border:
-            1px solid #263649 !important;
-
-        border-radius: 18px !important;
-
-        padding: 28px !important;
-
-        margin-bottom: 22px !important;
-
-        box-shadow:
-            0 16px 40px rgba(0, 0, 0, 0.18) !important;
-    }
-
-    .saas-card-small {
-        background:
-            linear-gradient(
-                145deg,
-                #141f2d,
-                #0e1723
-            ) !important;
-
-        border:
-            1px solid #263649 !important;
-
-        border-radius: 15px !important;
-
-        padding: 22px !important;
-
-        min-height: 145px !important;
-
-        box-shadow:
-            0 10px 30px rgba(0, 0, 0, 0.12) !important;
-    }
-
-
-    /* -----------------------------------------------------
-       UPLOAD BAŞLIK
-    ----------------------------------------------------- */
-
-    .upload-title-row {
-        display: flex !important;
-        align-items: center !important;
-        gap: 16px !important;
-    }
-
-    .upload-icon-box {
-        width: 60px !important;
-        height: 60px !important;
-
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-
-        border-radius: 16px !important;
-
-        background:
-            linear-gradient(
-                135deg,
-                rgba(255, 106, 0, 0.20),
-                rgba(255, 135, 35, 0.06)
-            ) !important;
-
-        border:
-            1px solid rgba(255, 120, 20, 0.25) !important;
-
-        font-size: 28px !important;
-    }
-
-    .upload-heading {
-        font-size: 22px !important;
-        font-weight: 700 !important;
-        color: #f8fafc !important;
-    }
-
-    .upload-text {
-        margin-top: 5px !important;
-        color: #8fa0b5 !important;
-        font-size: 14px !important;
-    }
-
-
-    /* -----------------------------------------------------
-       FILE UPLOADER
-    ----------------------------------------------------- */
-
-    [data-testid="stFileUploader"] {
-        margin-top: 18px !important;
-    }
-
-    [data-testid="stFileUploader"] section {
-        background:
-            linear-gradient(
-                145deg,
-                #0e1723,
-                #111c29
-            ) !important;
-
-        border:
-            1.5px dashed #3b5069 !important;
-
-        border-radius: 16px !important;
-
-        padding:
-            28px 22px !important;
-    }
-
-    [data-testid="stFileUploader"] section:hover {
-        border-color: #ff7a18 !important;
-        background:
-            linear-gradient(
-                145deg,
-                #101b29,
-                #142031
-            ) !important;
-    }
-
-    [data-testid="stFileUploader"] small,
-    [data-testid="stFileUploader"] span,
-    [data-testid="stFileUploader"] p {
-        color: #9caec2 !important;
-    }
-
-    [data-testid="stFileUploader"] button {
-        background:
-            linear-gradient(
-                135deg,
-                #ff6a00,
-                #ff8b2b
-            ) !important;
-
-        color: #ffffff !important;
-
-        border: none !important;
-
-        border-radius: 9px !important;
-
-        font-weight: 700 !important;
-
-        box-shadow:
-            0 8px 22px rgba(255, 106, 0, 0.22) !important;
-    }
-
-    [data-testid="stFileUploader"] button:hover {
-        background:
-            linear-gradient(
-                135deg,
-                #e95f00,
-                #ff7a18
-            ) !important;
-
-        color: white !important;
-    }
-
-
-    /* -----------------------------------------------------
-       NORMAL BUTONLAR
-    ----------------------------------------------------- */
-
-    .stButton > button {
-        background:
-            linear-gradient(
-                135deg,
-                #ff6a00,
-                #ff8a2a
-            ) !important;
-
-        color: #ffffff !important;
-
-        border: none !important;
-
-        border-radius: 10px !important;
-
-        font-weight: 700 !important;
-
-        min-height: 45px !important;
-
-        box-shadow:
-            0 10px 25px rgba(255, 106, 0, 0.18) !important;
-
-        transition:
-            transform 0.2s ease,
-            box-shadow 0.2s ease !important;
-    }
-
-    .stButton > button:hover {
-        color: white !important;
-
-        transform:
-            translateY(-1px) !important;
-
-        box-shadow:
-            0 14px 30px rgba(255, 106, 0, 0.25) !important;
-    }
-
-
-    /* -----------------------------------------------------
-       INPUT / SELECT
-    ----------------------------------------------------- */
-
-    [data-testid="stTextInput"] input,
-    [data-testid="stSelectbox"] input,
-    [data-testid="stNumberInput"] input {
-        background: #0d1723 !important;
-
-        color: #f8fafc !important;
-
-        border:
-            1px solid #314258 !important;
-
-        border-radius: 9px !important;
-    }
-
-    [data-testid="stTextInput"] label,
-    [data-testid="stSelectbox"] label,
-    [data-testid="stNumberInput"] label {
-        color: #aebccc !important;
-        font-weight: 600 !important;
-    }
-
-    div[data-baseweb="select"] > div {
-        background: #0d1723 !important;
-        color: #f8fafc !important;
-        border-color: #314258 !important;
-    }
-
-
-    /* -----------------------------------------------------
-       METRİK KARTLARI
-    ----------------------------------------------------- */
-
-    .metric-label {
-        color: #8fa0b5 !important;
-        font-size: 13px !important;
-        margin-bottom: 12px !important;
-    }
-
-    .metric-value {
-        color: #f8fafc !important;
-        font-size: 28px !important;
-        font-weight: 750 !important;
-    }
-
-    .metric-subtext {
-        color: #64748b !important;
-        font-size: 12px !important;
-        margin-top: 8px !important;
-    }
-
-
-    /* -----------------------------------------------------
-       INFO BOX
-    ----------------------------------------------------- */
-
-    .info-box {
-        background:
-            linear-gradient(
-                135deg,
-                rgba(29, 78, 216, 0.12),
-                rgba(17, 24, 39, 0.25)
-            ) !important;
-
-        border:
-            1px solid rgba(96, 165, 250, 0.22) !important;
-
-        border-radius: 14px !important;
-
-        padding: 20px !important;
-
-        margin-top: 18px !important;
-
-        color: #b8c7d9 !important;
-    }
-
-    .info-box-title {
-        color: #e5eef9 !important;
-        font-weight: 700 !important;
-        margin-bottom: 8px !important;
-    }
-
-
-    /* -----------------------------------------------------
-       PRO PAKET
-    ----------------------------------------------------- */
-
-    .pro-card {
-        margin-top: 30px !important;
-
-        background:
-            linear-gradient(
-                145deg,
-                rgba(255, 106, 0, 0.12),
-                rgba(17, 24, 39, 0.90)
-            ) !important;
-
-        border:
-            1px solid rgba(255, 120, 20, 0.25) !important;
-
-        border-radius: 15px !important;
-
-        padding: 18px !important;
-    }
-
-    .pro-title {
-        color: #ff8a2a !important;
-        font-weight: 750 !important;
-        font-size: 15px !important;
-    }
-
-    .pro-text {
-        color: #9caec2 !important;
-        font-size: 12px !important;
-        margin-top: 14px !important;
-    }
-
-    .progress-bg {
-        width: 100% !important;
-        height: 7px !important;
-        border-radius: 10px !important;
-        background: #253346 !important;
-        margin-top: 10px !important;
-    }
-
-    .progress-fill {
-        width: 85% !important;
-        height: 7px !important;
-        border-radius: 10px !important;
-        background:
-            linear-gradient(
-                90deg,
-                #ff6a00,
-                #ff9a42
-            ) !important;
-    }
-
-
-    /* -----------------------------------------------------
-       SUCCESS / ERROR
-    ----------------------------------------------------- */
-
-    [data-testid="stAlert"] {
-        border-radius: 12px !important;
-    }
-
-
-    /* -----------------------------------------------------
-       DATAFRAME
-    ----------------------------------------------------- */
-
-    [data-testid="stDataFrame"] {
-        border-radius: 12px !important;
-        overflow: hidden !important;
-        border: 1px solid #263649 !important;
-    }
-
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+</style>
+""", unsafe_allow_html=True)
 
 
 # =========================================================
@@ -638,55 +531,33 @@ def clean_filename(value):
     s = str(value or "urun").strip()
 
     replacements = {
-        "ç": "c",
-        "Ç": "C",
-        "ğ": "g",
-        "Ğ": "G",
-        "ı": "i",
-        "İ": "I",
-        "ö": "o",
-        "Ö": "O",
-        "ş": "s",
-        "Ş": "S",
-        "ü": "u",
-        "Ü": "U",
+        "ç": "c", "Ç": "C",
+        "ğ": "g", "Ğ": "G",
+        "ı": "i", "İ": "I",
+        "ö": "o", "Ö": "O",
+        "ş": "s", "Ş": "S",
+        "ü": "u", "Ü": "U"
     }
 
     for a, b in replacements.items():
         s = s.replace(a, b)
 
     s = unicodedata.normalize("NFKD", s)
+    s = "".join(c for c in s if not unicodedata.combining(c))
 
-    s = "".join(
-        c for c in s
-        if not unicodedata.combining(c)
-    )
+    s = re.sub(r'[<>:"/\\\\|?*]', "-", s)
+    s = re.sub(r"\s+", "-", s)
+    s = re.sub(r"-+", "-", s)
 
-    s = re.sub(
-        r'[<>:"/\\\\|?*]',
-        "-",
-        s
-    )
-
-    s = re.sub(
-        r"\s+",
-        "-",
-        s
-    )
-
-    s = re.sub(
-        r"-+",
-        "-",
-        s
-    ).strip(" .-_")
+    s = s.strip(" .-_")
 
     return s[:120] or "urun"
 
 
-def is_url(v):
+def is_url(value):
     return (
-        isinstance(v, str)
-        and v.strip().lower().startswith(
+        isinstance(value, str)
+        and value.strip().lower().startswith(
             ("http://", "https://")
         )
     )
@@ -701,21 +572,16 @@ def read_image_excel(file_bytes):
     )
 
     ws = wb.active
-
     rows = ws.iter_rows(values_only=True)
 
     try:
         first = next(rows)
     except StopIteration:
         wb.close()
-        raise RuntimeError(
-            "Excel dosyası boş."
-        )
+        raise RuntimeError("Excel dosyası boş.")
 
     headers = [
-        str(x).strip()
-        if x is not None
-        else ""
+        str(x).strip() if x is not None else ""
         for x in first
     ]
 
@@ -723,16 +589,11 @@ def read_image_excel(file_bytes):
 
     for row in rows:
 
-        row_data = {}
-
-        for i, h in enumerate(headers):
-
-            if h:
-                row_data[h] = (
-                    row[i]
-                    if i < len(row)
-                    else None
-                )
+        row_data = {
+            h: (row[i] if i < len(row) else None)
+            for i, h in enumerate(headers)
+            if h
+        }
 
         data.append(row_data)
 
@@ -740,9 +601,7 @@ def read_image_excel(file_bytes):
 
     image_cols = [
         h for h in headers
-        if h.upper()
-        .replace("İ", "I")
-        .startswith("RESIM")
+        if h.upper().replace("İ", "I").startswith("RESIM")
     ]
 
     image_cols.sort(
@@ -755,11 +614,7 @@ def read_image_excel(file_bytes):
     return headers, data, image_cols
 
 
-def prepare_image(
-    im,
-    target_size,
-    fit_mode
-):
+def prepare_image(im, target_size, fit_mode):
 
     try:
         im.seek(0)
@@ -839,298 +694,169 @@ def prepare_image(
 
 with st.sidebar:
 
-    st.markdown(
-        """
-        <div class="brand-box">
-            <div class="brand-row">
-                <div class="brand-logo-box">S</div>
-
-                <div>
-                    <div class="brand-title">
-                        SİSTEMİST
-                    </div>
-
-                    <div class="brand-subtitle">
-                        IMAGE STUDIO
-                    </div>
-                </div>
+    st.markdown("""
+    <div class="brand-wrap">
+        <div class="brand-row">
+            <div class="brand-logo">S</div>
+            <div>
+                <div class="brand-name">SİSTEMİST</div>
+                <div class="brand-sub">IMAGE STUDIO</div>
             </div>
         </div>
-        """,
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown(
+        '<div class="menu-label">ÇALIŞMA ALANI</div>',
         unsafe_allow_html=True
     )
 
+    if st.button("⌂  Dashboard", key="nav_home"):
+        go_page("home")
+
+    if st.button("↓  URL → Görsel", key="nav_download"):
+        go_page("download")
+
+    if st.button("↑  Görsel → URL", key="nav_upload"):
+        go_page("upload")
+
     st.markdown(
-        '<div class="menu-section-title">ÇALIŞMA ALANI</div>',
+        '<div class="menu-label">SİSTEM</div>',
         unsafe_allow_html=True
     )
 
-    if st.button(
-        "⌂   Dashboard",
-        use_container_width=True,
-        key="menu_dashboard"
-    ):
-        st.session_state.page = "dashboard"
+    if st.button("⚙  Genel Bakış", key="nav_info"):
+        go_page("home")
 
-    if st.button(
-        "↓   URL → Görsel",
-        use_container_width=True,
-        key="menu_download"
-    ):
-        st.session_state.page = "download"
-
-    if st.button(
-        "↑   Görsel → URL",
-        use_container_width=True,
-        key="menu_upload"
-    ):
-        st.session_state.page = "upload"
-
-    st.markdown(
-        '<div class="menu-section-title">SİSTEM</div>',
-        unsafe_allow_html=True
-    )
-
-    st.button(
-        "⚙   Genel Ayarlar",
-        use_container_width=True,
-        key="menu_settings"
-    )
-
-    st.markdown(
-        """
-        <div class="pro-card">
-
-            <div class="pro-title">
-                ✦ PRO PAKET
-            </div>
-
-            <div class="pro-text">
-                Image Studio kullanım hakkınız
-            </div>
-
-            <div style="color:#ffffff;font-size:14px;
-                        font-weight:700;margin-top:7px;">
-                Kullanıma Hazır
-            </div>
-
-            <div class="progress-bg">
-                <div class="progress-fill"></div>
-            </div>
-
+    st.markdown("""
+    <div class="pro-card">
+        <div class="pro-title">IMAGE STUDIO</div>
+        <div class="pro-text">Sistem durumunuz</div>
+        <div class="pro-status">● Aktif ve Hazır</div>
+        <div class="pro-line">
+            <div class="pro-line-fill"></div>
         </div>
-        """,
-        unsafe_allow_html=True
-    )
+    </div>
+    """, unsafe_allow_html=True)
 
 
 # =========================================================
-# DASHBOARD
+# ANA SAYFA
 # =========================================================
 
-if st.session_state.page == "dashboard":
+if st.session_state.page == "home":
 
     st.markdown(
-        '<div class="page-title">Image Studio</div>',
+        '<div class="main-title">Image Studio</div>',
         unsafe_allow_html=True
     )
 
     st.markdown(
-        """
-        <div class="page-description">
-            E-ticaret görsel operasyonlarınızı tek bir panelden
-            hızlı ve profesyonel şekilde yönetin.
+        '''
+        <div class="main-subtitle">
+            E-ticaret görsellerinizi indirin, işleyin ve buluta yükleyin.
+            Tüm görsel operasyonlarınız tek panelde.
         </div>
-        """,
+        ''',
         unsafe_allow_html=True
     )
 
-    st.markdown(
-        """
-        <div class="saas-card">
-
-            <div class="upload-title-row">
-
-                <div class="upload-icon-box">
-                    📊
-                </div>
-
-                <div>
-
-                    <div class="upload-heading">
-                        Excel dosyanızı yükleyin
-                    </div>
-
-                    <div class="upload-text">
-                        URL listesi bulunan Excel dosyanızı
-                        yükleyerek görsellerinizi işleyin.
-                    </div>
-
-                </div>
-
-            </div>
-
+    st.markdown("""
+    <div class="hero">
+        <div class="hero-kicker">SİSTEMİST IMAGE STUDIO</div>
+        <div class="hero-title">
+            Görsel operasyonlarınızı tek merkezden yönetin.
         </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.markdown(
-        """
-        <div class="info-box">
-
-            <div class="info-box-title">
-                Nasıl çalışır?
-            </div>
-
-            Excel dosyanızı yükleyin, görselleri
-            indirin ve istediğiniz boyut ile formatta
-            ZIP dosyası olarak alın.
-
+        <div class="hero-text">
+            Excel'deki ürün görsellerini toplu indirin, yeniden boyutlandırın,
+            ZIP oluşturun veya görsellerinizi Cloudflare R2'ye yükleyerek
+            doğrudan kullanılabilir URL'ler oluşturun.
         </div>
-        """,
-        unsafe_allow_html=True
-    )
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns(2, gap="large")
 
     with col1:
 
-        st.markdown(
-            """
-            <div class="saas-card">
-
-                <div class="upload-title-row">
-
-                    <div class="upload-icon-box">
-                        ↓
-                    </div>
-
-                    <div>
-
-                        <div class="upload-heading">
-                            URL → Görsel
-                        </div>
-
-                        <div class="upload-text">
-                            Excel içindeki görsel linklerini
-                            toplu olarak indirin.
-                        </div>
-
-                    </div>
-
-                </div>
-
+        st.markdown("""
+        <div class="saas-card">
+            <div class="card-icon">↓</div>
+            <div class="card-title">URL → Görsel Motoru</div>
+            <div class="card-text">
+                Excel dosyanızdaki ürün görsel bağlantılarını otomatik olarak
+                indirin. JPG, PNG, WEBP ve AVIF dönüşümü yapın.
+                İstediğiniz ölçüde görselleri işleyip tek ZIP dosyasında alın.
             </div>
-            """,
-            unsafe_allow_html=True
-        )
+        </div>
+        """, unsafe_allow_html=True)
 
         if st.button(
-            "URL → Görsel Motorunu Aç",
+            "URL → GÖRSEL MOTORUNU AÇ",
             use_container_width=True,
-            key="dashboard_download"
+            key="home_download"
         ):
-            st.session_state.page = "download"
+            go_page("download")
             st.rerun()
 
     with col2:
 
-        st.markdown(
-            """
-            <div class="saas-card">
-
-                <div class="upload-title-row">
-
-                    <div class="upload-icon-box">
-                        ↑
-                    </div>
-
-                    <div>
-
-                        <div class="upload-heading">
-                            Görsel → URL
-                        </div>
-
-                        <div class="upload-text">
-                            Görsellerinizi Cloudflare R2'ye
-                            yükleyin ve URL oluşturun.
-                        </div>
-
-                    </div>
-
-                </div>
-
+        st.markdown("""
+        <div class="saas-card">
+            <div class="card-icon">☁</div>
+            <div class="card-title">Görsel → URL Motoru</div>
+            <div class="card-text">
+                Yerel görsellerinizi doğrudan Cloudflare R2 depolamanıza
+                yükleyin. İşlem tamamlandığında tüm görsel URL'lerini
+                içeren hazır Excel raporunu indirin.
             </div>
-            """,
-            unsafe_allow_html=True
-        )
+        </div>
+        """, unsafe_allow_html=True)
 
         if st.button(
-            "Görsel → URL Motorunu Aç",
+            "GÖRSEL → URL MOTORUNU AÇ",
             use_container_width=True,
-            key="dashboard_upload"
+            key="home_upload"
         ):
-            st.session_state.page = "upload"
+            go_page("upload")
             st.rerun()
 
 
 # =========================================================
-# URL → GÖRSEL / İNDİRME
+# URL → GÖRSEL
 # =========================================================
 
 elif st.session_state.page == "download":
 
     st.markdown(
-        '<div class="page-title">URL → Görsel</div>',
+        '<div class="main-title">URL → Görsel</div>',
         unsafe_allow_html=True
     )
 
     st.markdown(
-        """
-        <div class="page-description">
-            Excel listenizdeki ürün görsellerini indirin,
-            yeniden boyutlandırın ve tek ZIP dosyasında alın.
+        '''
+        <div class="main-subtitle">
+            Excel dosyanızdaki görsel URL'lerini toplu olarak indirin,
+            işleyin ve ZIP dosyası olarak alın.
         </div>
-        """,
+        ''',
         unsafe_allow_html=True
     )
 
-    st.markdown(
-        """
-        <div class="saas-card">
-
-            <div class="upload-title-row">
-
-                <div class="upload-icon-box">
-                    📥
-                </div>
-
-                <div>
-
-                    <div class="upload-heading">
-                        Excel dosyanızı yükleyin
-                    </div>
-
-                    <div class="upload-text">
-                        RESIM, RESIM1, RESIM2 gibi
-                        görsel URL sütunlarını otomatik algılar.
-                    </div>
-
-                </div>
-
-            </div>
+    st.markdown("""
+    <div class="saas-card">
+        <div class="upload-box-title">Excel dosyanızı yükleyin</div>
+        <div class="upload-box-text">
+            RESIM, RESIM1, RESIM2 gibi görsel bağlantı sütunları
+            otomatik olarak algılanır.
         </div>
-        """,
-        unsafe_allow_html=True
-    )
+    </div>
+    """, unsafe_allow_html=True)
 
     uploaded_file = st.file_uploader(
-        "Excel dosyanızı seçin",
+        "Excel dosyasını seçin (.xlsx)",
         type=["xlsx"],
-        key="excel_download"
+        key="excel_file"
     )
 
     if uploaded_file:
@@ -1139,20 +865,19 @@ elif st.session_state.page == "download":
 
         try:
 
-            headers, excel_data, image_columns = (
-                read_image_excel(file_bytes)
+            headers, excel_data, image_columns = read_image_excel(
+                file_bytes
             )
 
             st.success(
-                f"Excel analiz edildi: "
-                f"{len(excel_data)} satır bulundu."
+                f"Excel başarıyla analiz edildi. "
+                f"{len(excel_data)} ürün satırı bulundu."
             )
 
             if not image_columns:
 
                 st.warning(
-                    "RESIM ile başlayan bir görsel URL "
-                    "sütunu bulunamadı."
+                    "RESIM ile başlayan görsel URL sütunu bulunamadı."
                 )
 
             else:
@@ -1166,11 +891,19 @@ elif st.session_state.page == "download":
                         if h and h not in image_columns
                     ]
 
-                    name_col = st.selectbox(
-                        "Dosya adı sütunu",
-                        usable_headers,
-                        key="download_name_col"
-                    )
+                    if usable_headers:
+
+                        name_col = st.selectbox(
+                            "Dosya adı sütunu",
+                            usable_headers
+                        )
+
+                    else:
+
+                        name_col = None
+                        st.warning(
+                            "Dosya adı için kullanılabilir sütun bulunamadı."
+                        )
 
                 with col2:
 
@@ -1182,8 +915,7 @@ elif st.session_state.page == "download":
                             "WEBP",
                             "AVIF",
                             "Orijinal formatı koru"
-                        ],
-                        key="download_format"
+                        ]
                     )
 
                 with col3:
@@ -1194,8 +926,7 @@ elif st.session_state.page == "download":
                             "1200 × 1200 px",
                             "1200 × 1800 px",
                             "Orijinal boyutu koru"
-                        ],
-                        key="download_size"
+                        ]
                     )
 
                 fit_mode = st.selectbox(
@@ -1203,16 +934,14 @@ elif st.session_state.page == "download":
                     [
                         "Sığdır (oranı koru + beyaz zemin)",
                         "Kırp (alanı tamamen doldur)"
-                    ],
-                    key="download_fit"
+                    ]
                 )
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
                 if st.button(
                     "GÖRSELLERİ İŞLE VE ZIP OLUŞTUR",
-                    use_container_width=True,
-                    key="process_images"
+                    use_container_width=True
                 ):
 
                     tasks = []
@@ -1222,10 +951,16 @@ elif st.session_state.page == "download":
                         start=2
                     ):
 
+                        if name_col:
+                            base_value = row.get(name_col)
+                        else:
+                            base_value = None
+
                         base = clean_filename(
-                            row.get(name_col)
-                            or f"urun-{row_no}"
+                            base_value or f"urun-{row_no}"
                         )
+
+                        image_number = 1
 
                         for col in image_columns:
 
@@ -1233,18 +968,18 @@ elif st.session_state.page == "download":
 
                             if is_url(value):
 
-                                tasks.append(
-                                    {
-                                        "url": value.strip(),
-                                        "base": base,
-                                        "num": len(tasks) + 1
-                                    }
-                                )
+                                tasks.append({
+                                    "url": value.strip(),
+                                    "base": base,
+                                    "num": image_number
+                                })
+
+                                image_number += 1
 
                     if not tasks:
 
                         st.warning(
-                            "Geçerli görsel URL'si bulunamadı."
+                            "Excel dosyasında geçerli görsel URL'si bulunamadı."
                         )
 
                     else:
@@ -1256,19 +991,16 @@ elif st.session_state.page == "download":
                         session = requests.Session()
 
                         if size_mode == "1200 × 1200 px":
-
                             target_size = (1200, 1200)
 
                         elif size_mode == "1200 × 1800 px":
-
                             target_size = (1200, 1800)
 
                         else:
-
                             target_size = None
 
-                        successful_count = 0
-                        failed_count = 0
+                        success_count = 0
+                        error_count = 0
 
                         with zipfile.ZipFile(
                             zip_buffer,
@@ -1282,15 +1014,17 @@ elif st.session_state.page == "download":
 
                                     response = session.get(
                                         task["url"],
-                                        timeout=30
+                                        timeout=30,
+                                        headers={
+                                            "User-Agent":
+                                            "Mozilla/5.0"
+                                        }
                                     )
 
                                     response.raise_for_status()
 
                                     img_orig = Image.open(
-                                        io.BytesIO(
-                                            response.content
-                                        )
+                                        io.BytesIO(response.content)
                                     )
 
                                     if (
@@ -1298,19 +1032,16 @@ elif st.session_state.page == "download":
                                         == "Orijinal formatı koru"
                                     ):
 
-                                        original_path = (
-                                            task["url"]
-                                            .split("?")[0]
-                                        )
+                                        url_path = task["url"].split("?")[0]
 
                                         ext = (
-                                            Path(
-                                                original_path
-                                            )
+                                            Path(url_path)
                                             .suffix
                                             .lower()
-                                            or ".jpg"
                                         )
+
+                                        if not ext:
+                                            ext = ".jpg"
 
                                         pil_fmt = (
                                             img_orig.format
@@ -1319,30 +1050,16 @@ elif st.session_state.page == "download":
 
                                     else:
 
-                                        mapping = {
-                                            "JPG": (
-                                                ".jpg",
-                                                "JPEG"
-                                            ),
-                                            "PNG": (
-                                                ".png",
-                                                "PNG"
-                                            ),
-                                            "WEBP": (
-                                                ".webp",
-                                                "WEBP"
-                                            ),
-                                            "AVIF": (
-                                                ".avif",
-                                                "AVIF"
-                                            ),
+                                        format_map = {
+                                            "JPG": (".jpg", "JPEG"),
+                                            "PNG": (".png", "PNG"),
+                                            "WEBP": (".webp", "WEBP"),
+                                            "AVIF": (".avif", "AVIF")
                                         }
 
-                                        ext, pil_fmt = (
-                                            mapping[
-                                                output_format
-                                            ]
-                                        )
+                                        ext, pil_fmt = format_map[
+                                            output_format
+                                        ]
 
                                     processed_img = prepare_image(
                                         img_orig,
@@ -1350,215 +1067,165 @@ elif st.session_state.page == "download":
                                         fit_mode
                                     )
 
-                                    img_byte_arr = io.BytesIO()
+                                    output = io.BytesIO()
 
                                     if (
                                         pil_fmt == "JPEG"
-                                        and processed_img.mode
-                                        not in ("RGB", "L")
+                                        and processed_img.mode != "RGB"
                                     ):
-
-                                        processed_img = (
-                                            processed_img.convert(
-                                                "RGB"
-                                            )
+                                        processed_img = processed_img.convert(
+                                            "RGB"
                                         )
 
-                                    save_kwargs = {}
+                                    save_options = {}
 
-                                    if pil_fmt in (
-                                        "JPEG",
-                                        "WEBP"
-                                    ):
-
-                                        save_kwargs["quality"] = 90
+                                    if pil_fmt in ["JPEG", "WEBP"]:
+                                        save_options["quality"] = 90
 
                                     processed_img.save(
-                                        img_byte_arr,
+                                        output,
                                         format=pil_fmt,
-                                        **save_kwargs
+                                        **save_options
                                     )
 
-                                    filename = (
+                                    file_name = (
                                         f"{task['base']}"
                                         f"-{task['num']}"
                                         f"{ext}"
                                     )
 
                                     zip_file.writestr(
-                                        filename,
-                                        img_byte_arr.getvalue()
+                                        file_name,
+                                        output.getvalue()
                                     )
 
-                                    successful_count += 1
+                                    success_count += 1
 
                                 except Exception:
-
-                                    failed_count += 1
+                                    error_count += 1
 
                                 progress_bar.progress(
                                     (idx + 1) / len(tasks)
                                 )
 
                         st.success(
-                            f"İşlem tamamlandı! "
-                            f"{successful_count} görsel işlendi."
+                            f"İşlem tamamlandı. "
+                            f"{success_count} görsel başarıyla işlendi."
                         )
 
-                        if failed_count:
+                        if error_count > 0:
 
                             st.warning(
-                                f"{failed_count} görsel "
-                                f"indirilemedi veya işlenemedi."
+                                f"{error_count} görsel işlenemedi."
                             )
 
                         st.download_button(
                             label="ZIP DOSYASINI İNDİR",
                             data=zip_buffer.getvalue(),
-                            file_name=(
-                                "sistemist_studio_cikti.zip"
-                            ),
+                            file_name="sistemist_studio_cikti.zip",
                             mime="application/zip",
-                            use_container_width=True,
-                            key="download_zip"
+                            use_container_width=True
                         )
 
         except Exception as e:
 
             st.error(
-                f"Excel işleme hatası: {str(e)}"
+                f"Excel işleme sırasında hata oluştu: {str(e)}"
             )
 
 
 # =========================================================
-# GÖRSEL → URL / R2 YÜKLEME
+# GÖRSEL → URL / R2
 # =========================================================
 
 elif st.session_state.page == "upload":
 
     st.markdown(
-        '<div class="page-title">Görsel → URL</div>',
+        '<div class="main-title">Görsel → URL</div>',
         unsafe_allow_html=True
     )
 
     st.markdown(
-        """
-        <div class="page-description">
-            Bilgisayarınızdaki görselleri Cloudflare R2'ye
-            yükleyin ve toplu URL listesi oluşturun.
+        '''
+        <div class="main-subtitle">
+            Yerel görsellerinizi Cloudflare R2 depolamanıza yükleyin
+            ve hazır URL raporu oluşturun.
         </div>
-        """,
+        ''',
         unsafe_allow_html=True
     )
 
     with st.expander(
-        "Cloudflare R2 Bağlantı Ayarları",
+        "☁ Cloudflare R2 Bağlantı Ayarları",
         expanded=True
     ):
 
         r2_endpoint = st.text_input(
             "R2 Endpoint",
-            value=(
-                "https://<ACCOUNT_ID>"
-                ".r2.cloudflarestorage.com"
-            ),
-            key="r2_endpoint"
+            placeholder=(
+                "https://ACCOUNT_ID.r2.cloudflarestorage.com"
+            )
         )
 
         r2_access_key = st.text_input(
-            "Access Key ID",
-            key="r2_access_key"
+            "Access Key ID"
         )
 
         r2_secret_key = st.text_input(
             "Secret Access Key",
-            type="password",
-            key="r2_secret_key"
+            type="password"
         )
 
         r2_bucket = st.text_input(
             "Bucket Name",
-            value="sistemist-image-studio",
-            key="r2_bucket"
+            value="sistemist-image-studio"
         )
 
         r2_public_url = st.text_input(
             "CDN / Public URL",
-            placeholder=(
-                "https://cdn.sistemist.com"
-            ),
-            key="r2_public_url"
+            placeholder="https://studio.sistemist.com"
         )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    st.markdown(
-        """
-        <div class="saas-card">
-
-            <div class="upload-title-row">
-
-                <div class="upload-icon-box">
-                    ☁
-                </div>
-
-                <div>
-
-                    <div class="upload-heading">
-                        Görsellerinizi yükleyin
-                    </div>
-
-                    <div class="upload-text">
-                        Birden fazla görsel seçebilir,
-                        yükleme sonunda Excel URL raporu alabilirsiniz.
-                    </div>
-
-                </div>
-
-            </div>
-
+    st.markdown("""
+    <div class="saas-card">
+        <div class="upload-box-title">Görsellerinizi seçin</div>
+        <div class="upload-box-text">
+            JPG, JPEG, PNG, WEBP ve GIF görsellerini
+            aynı anda toplu olarak yükleyebilirsiniz.
         </div>
-        """,
-        unsafe_allow_html=True
-    )
+    </div>
+    """, unsafe_allow_html=True)
 
     uploaded_images = st.file_uploader(
-        "Görselleri seçin",
-        type=[
-            "jpg",
-            "jpeg",
-            "png",
-            "webp",
-            "gif"
-        ],
+        "Görselleri sürükleyin veya seçin",
+        type=["jpg", "jpeg", "png", "webp", "gif"],
         accept_multiple_files=True,
-        key="r2_images"
+        key="image_upload"
     )
 
     if uploaded_images:
 
-        st.info(
+        st.success(
             f"{len(uploaded_images)} görsel yüklemeye hazır."
         )
 
         if st.button(
             "BULUT DAĞITIMINI BAŞLAT VE EXCEL RAPORU ÜRET",
-            use_container_width=True,
-            key="start_r2_upload"
+            use_container_width=True
         ):
 
-            if not all(
-                [
-                    r2_endpoint,
-                    r2_access_key,
-                    r2_secret_key,
-                    r2_bucket,
-                    r2_public_url,
-                ]
-            ):
+            if not all([
+                r2_endpoint,
+                r2_access_key,
+                r2_secret_key,
+                r2_bucket,
+                r2_public_url
+            ]):
 
                 st.error(
-                    "Lütfen tüm Cloudflare R2 ayarlarını doldurun."
+                    "Lütfen tüm Cloudflare R2 bilgilerini doldurun."
                 )
 
             else:
@@ -1567,15 +1234,9 @@ elif st.session_state.page == "upload":
 
                     s3_client = boto3.client(
                         "s3",
-                        endpoint_url=(
-                            r2_endpoint.rstrip("/")
-                        ),
-                        aws_access_key_id=(
-                            r2_access_key
-                        ),
-                        aws_secret_access_key=(
-                            r2_secret_key
-                        ),
+                        endpoint_url=r2_endpoint.rstrip("/"),
+                        aws_access_key_id=r2_access_key,
+                        aws_secret_access_key=r2_secret_key,
                         region_name="auto",
                         config=Config(
                             signature_version="s3v4"
@@ -1586,40 +1247,20 @@ elif st.session_state.page == "upload":
 
                     progress_bar = st.progress(0)
 
-                    for idx, img_file in enumerate(
-                        uploaded_images
-                    ):
+                    for idx, img_file in enumerate(uploaded_images):
 
                         file_bytes = img_file.getvalue()
 
-                        guessed_type = (
+                        content_type = (
                             mimetypes.guess_type(
                                 img_file.name
                             )[0]
-                        )
-
-                        content_type = (
-                            guessed_type
                             or "application/octet-stream"
                         )
 
-                        safe_name = clean_filename(
-                            Path(
-                                img_file.name
-                            ).stem
-                        )
+                        original_name = img_file.name
 
-                        extension = (
-                            Path(
-                                img_file.name
-                            )
-                            .suffix
-                            .lower()
-                        )
-
-                        object_key = (
-                            f"{safe_name}{extension}"
-                        )
+                        object_key = original_name
 
                         s3_client.put_object(
                             Bucket=r2_bucket,
@@ -1633,45 +1274,42 @@ elif st.session_state.page == "upload":
                             f"/{quote(object_key)}"
                         )
 
-                        results.append(
-                            [
-                                img_file.name,
-                                extension
-                                .lstrip(".")
-                                .upper(),
-                                round(
-                                    len(file_bytes)
-                                    / 1048576,
-                                    3
-                                ),
-                                generated_url,
-                                "Başarılı",
-                            ]
-                        )
+                        results.append([
+                            original_name,
+                            Path(original_name)
+                            .suffix
+                            .lower()
+                            .lstrip(".")
+                            .upper(),
+
+                            round(
+                                len(file_bytes) / 1048576,
+                                3
+                            ),
+
+                            generated_url,
+
+                            "Başarılı"
+                        ])
 
                         progress_bar.progress(
-                            (idx + 1)
-                            / len(uploaded_images)
+                            (idx + 1) / len(uploaded_images)
                         )
 
                     wb = Workbook()
-
                     ws = wb.active
 
                     ws.title = "Image URLs"
 
-                    ws.append(
-                        [
-                            "DOSYA_ADI",
-                            "FORMAT",
-                            "BOYUT_MB",
-                            "URL",
-                            "DURUM",
-                        ]
-                    )
+                    ws.append([
+                        "DOSYA_ADI",
+                        "FORMAT",
+                        "BOYUT_MB",
+                        "URL",
+                        "DURUM"
+                    ])
 
                     for row in results:
-
                         ws.append(row)
 
                     excel_buffer = io.BytesIO()
@@ -1679,26 +1317,22 @@ elif st.session_state.page == "upload":
                     wb.save(excel_buffer)
 
                     st.success(
-                        "Tüm görseller başarıyla Cloudflare R2'ye yüklendi."
+                        f"{len(results)} görsel başarıyla yüklendi."
                     )
 
                     st.download_button(
                         label="EXCEL URL RAPORUNU İNDİR",
                         data=excel_buffer.getvalue(),
-                        file_name=(
-                            "sistemist_r2_link_haritasi.xlsx"
-                        ),
+                        file_name="sistemist_r2_link_haritasi.xlsx",
                         mime=(
-                            "application/"
-                            "vnd.openxmlformats-officedocument."
+                            "application/vnd.openxmlformats-officedocument."
                             "spreadsheetml.sheet"
                         ),
-                        use_container_width=True,
-                        key="download_r2_excel"
+                        use_container_width=True
                     )
 
                 except Exception as e:
 
                     st.error(
-                        f"Cloudflare R2 Hatası: {str(e)}"
+                        f"Cloudflare R2 hatası: {str(e)}"
                     )
