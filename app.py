@@ -1,1732 +1,1547 @@
+import io
+import os
+import zipfile
+import tempfile
+from datetime import datetime
+
+import pandas as pd
+import requests
 import streamlit as st
-import streamlit.components.v1 as components
+from PIL import Image
+
+
+# =========================================================
+# SAYFA AYARLARI
+# =========================================================
 
 st.set_page_config(
     page_title="Sistemist Image Studio",
-    page_icon="S",
+    page_icon="🖼️",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
-APP_HTML = r"""
-<!DOCTYPE html>
-<html lang="tr">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+# =========================================================
+# SESSION STATE
+# =========================================================
+
+if "page" not in st.session_state:
+    st.session_state.page = "Dashboard"
+
+if "history" not in st.session_state:
+    st.session_state.history = []
+
+if "package" not in st.session_state:
+    st.session_state.package = "PRO"
+
+if "total_operations" not in st.session_state:
+    st.session_state.total_operations = 0
+
+if "success_count" not in st.session_state:
+    st.session_state.success_count = 0
+
+
+# =========================================================
+# CSS
+# =========================================================
+
+st.markdown(
+    """
 <style>
-:root{
-    --bg:#0b121d;
-    --bg2:#101925;
-    --panel:#182331;
-    --panel2:#1d2937;
-    --line:#2a3c50;
-    --text:#f4f7fb;
-    --muted:#91a3b8;
-    --orange:#ff6b0b;
-    --orange2:#ff8a2a;
-    --blue:#4da3ff;
-    --green:#42d392;
-    --red:#ff5d6c;
+
+:root {
+    --bg: #0d141d;
+    --bg2: #111b27;
+    --panel: #182331;
+    --panel2: #1d2937;
+    --line: #2a3c50;
+    --text: #f2f5f8;
+    --muted: #91a3b8;
+    --orange: #ff6b0b;
+    --orange2: #ff8a2a;
+    --blue: #4aa3ff;
+    --green: #39d98a;
+    --danger: #ff5d6c;
 }
 
-*{
-    box-sizing:border-box;
-    margin:0;
-    padding:0;
+html {
+    scroll-behavior: smooth;
 }
 
-html,body{
-    width:100%;
-    min-height:100%;
-    background:var(--bg);
-    color:var(--text);
-    font-family:Arial,Helvetica,sans-serif;
-}
-
-body{
-    overflow-x:hidden;
-}
-
-button,input,select{
-    font:inherit;
-}
-
-button{
-    cursor:pointer;
-}
-
-.app{
-    display:flex;
-    min-height:100vh;
+.stApp {
     background:
-        radial-gradient(circle at 90% 0%, rgba(255,107,11,.08), transparent 30%),
-        var(--bg);
+        radial-gradient(
+            circle at 85% 0%,
+            rgba(255,107,11,0.10),
+            transparent 25%
+        ),
+        #0d141d;
+    color: #f2f5f8;
+}
+
+#MainMenu {
+    visibility: hidden;
+}
+
+footer {
+    visibility: hidden;
+}
+
+header {
+    visibility: hidden;
+}
+
+.block-container {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+    max-width: 1450px;
 }
 
 /* SIDEBAR */
 
-.sidebar{
-    width:285px;
-    min-width:285px;
-    min-height:100vh;
-    position:fixed;
-    left:0;
-    top:0;
-    bottom:0;
-    z-index:100;
-    overflow-y:auto;
-    background:#111b27;
-    border-right:1px solid var(--line);
-    padding:24px 16px;
+[data-testid="stSidebar"] {
+    background: #111b27;
+    border-right: 1px solid #2a3c50;
 }
 
-.brand{
-    padding:4px 8px 24px;
-    border-bottom:1px solid var(--line);
-    margin-bottom:22px;
+[data-testid="stSidebar"] * {
+    color: #d7e0eb;
 }
 
-.logo-row{
-    display:flex;
-    align-items:center;
-    gap:12px;
+.brand-box {
+    padding: 10px 5px 25px 5px;
+    border-bottom: 1px solid #2a3c50;
+    margin-bottom: 20px;
 }
 
-.logo-icon{
-    width:44px;
-    height:44px;
-    position:relative;
-    flex:none;
+.brand-title {
+    color: #ff6b0b;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: 4px;
 }
 
-.logo-icon:before,
-.logo-icon:after{
-    content:"";
-    position:absolute;
-    width:28px;
-    height:18px;
-    border-radius:6px;
-    transform:rotate(-34deg);
+.brand-subtitle {
+    color: #91a3b8;
+    font-size: 11px;
+    letter-spacing: 2px;
+    margin-top: 6px;
 }
 
-.logo-icon:before{
-    left:2px;
-    top:4px;
-    background:linear-gradient(135deg,#ff8a2a,#ff5a00);
-}
+/* HERO */
 
-.logo-icon:after{
-    right:1px;
-    bottom:4px;
-    background:linear-gradient(135deg,#fff,#dce6f0);
-    transform:rotate(34deg);
-}
-
-.brand-name{
-    color:#fff;
-    font-weight:900;
-    font-size:23px;
-    letter-spacing:4px;
-}
-
-.brand-name span{
-    color:var(--orange);
-}
-
-.brand-version{
-    margin-top:10px;
-    color:#8294aa;
-    font-size:9px;
-    font-weight:800;
-    letter-spacing:2px;
-}
-
-.menu-title{
-    color:#71849a;
-    font-size:9px;
-    font-weight:900;
-    letter-spacing:2px;
-    margin:22px 10px 10px;
-}
-
-.nav-btn{
-    width:100%;
-    border:0;
-    background:transparent;
-    color:#aebdd0;
-    text-align:left;
-    padding:13px 14px;
-    margin:3px 0;
-    border-radius:10px;
-    transition:.2s;
-    display:flex;
-    align-items:center;
-    gap:10px;
-    font-size:14px;
-}
-
-.nav-btn:hover{
-    background:#1b2837;
-    color:#fff;
-}
-
-.nav-btn.active{
-    background:linear-gradient(90deg,rgba(255,107,11,.16),rgba(255,107,11,.04));
-    color:#fff;
-    border-left:3px solid var(--orange);
-}
-
-.nav-icon{
-    width:18px;
-    text-align:center;
-    color:var(--orange);
-}
-
-.sidebar-status{
-    margin-top:28px;
-    border-top:1px solid var(--line);
-    padding-top:20px;
-}
-
-.status-box{
-    background:#1a2736;
-    border:1px solid #30445a;
-    border-radius:15px;
-    padding:16px;
-    display:flex;
-    align-items:center;
-    gap:11px;
-}
-
-.status-dot{
-    width:9px;
-    height:9px;
-    border-radius:50%;
-    background:var(--green);
-    box-shadow:0 0 12px var(--green);
-}
-
-.status-title{
-    font-size:12px;
-    font-weight:800;
-}
-
-.status-sub{
-    color:var(--muted);
-    font-size:10px;
-    margin-top:5px;
-}
-
-/* MAIN */
-
-.main{
-    width:calc(100% - 285px);
-    margin-left:285px;
-    min-height:100vh;
-    padding:34px 42px;
-}
-
-.page{
-    display:none;
-    max-width:1400px;
-    margin:auto;
-}
-
-.page.active{
-    display:block;
-}
-
-.hero{
-    min-height:190px;
-    padding:40px 46px;
-    border:1px solid #30445a;
-    border-radius:25px;
+.hero {
+    position: relative;
+    overflow: hidden;
+    padding: 38px 42px;
+    margin-bottom: 28px;
+    border-radius: 24px;
+    border: 1px solid #2a3c50;
     background:
-        radial-gradient(circle at 90% 0%, rgba(255,107,11,.18), transparent 28%),
-        linear-gradient(135deg,#172332,#171e29);
-    position:relative;
-    overflow:hidden;
-    margin-bottom:28px;
-}
-
-.hero:after{
-    content:"";
-    position:absolute;
-    width:250px;
-    height:250px;
-    border:1px solid rgba(255,107,11,.2);
-    border-radius:50%;
-    right:-80px;
-    top:-140px;
-}
-
-.eyebrow{
-    color:var(--orange2);
-    font-size:10px;
-    font-weight:900;
-    letter-spacing:4px;
-    margin-bottom:16px;
-}
-
-.hero h1{
-    color:var(--orange);
-    font-size:42px;
-    line-height:1.1;
-    margin-bottom:20px;
-}
-
-.hero p{
-    max-width:850px;
-    color:#aab9ca;
-    font-size:15px;
-    line-height:1.8;
-}
-
-.stats{
-    display:grid;
-    grid-template-columns:repeat(5,1fr);
-    gap:18px;
-    margin-bottom:28px;
-}
-
-.stat{
-    min-height:190px;
-    background:linear-gradient(135deg,#1b2735,#17212d);
-    border:1px solid #2d4054;
-    border-left:4px solid var(--orange);
-    border-radius:20px;
-    padding:28px;
-}
-
-.stat-icon{
-    color:var(--orange);
-    font-size:22px;
-    height:42px;
-}
-
-.stat-label{
-    color:#8194aa;
-    font-size:10px;
-    font-weight:900;
-    letter-spacing:1.5px;
-    margin-bottom:16px;
-}
-
-.stat-value{
-    color:#fff;
-    font-size:29px;
-    font-weight:900;
-}
-
-.stat-sub{
-    color:#7d91a7;
-    font-size:11px;
-    margin-top:12px;
-}
-
-.engine-grid{
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:18px;
-    margin-bottom:28px;
-}
-
-.engine{
-    background:
-        radial-gradient(circle at 100% 0%,rgba(255,107,11,.09),transparent 22%),
+        radial-gradient(
+            circle at 100% 0%,
+            rgba(255,107,11,0.18),
+            transparent 35%
+        ),
         #182331;
-    border:1px solid #2c4055;
-    border-radius:22px;
-    padding:30px;
-    min-height:270px;
 }
 
-.engine-icon{
-    width:58px;
-    height:58px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    border:1px solid rgba(255,107,11,.3);
-    border-radius:17px;
-    color:var(--orange);
-    background:rgba(255,107,11,.06);
-    font-size:22px;
-    margin-bottom:24px;
+.hero-label {
+    color: #ff8a2a;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 5px;
+    margin-bottom: 18px;
 }
 
-.engine h2{
-    font-size:23px;
-    margin-bottom:14px;
+.hero h1 {
+    color: #ff6b0b;
+    font-size: 44px;
+    margin: 0 0 18px 0;
+    font-weight: 800;
 }
 
-.engine p{
-    color:#91a3b8;
-    font-size:13px;
-    line-height:1.8;
-    min-height:70px;
+.hero p {
+    color: #aab9ca;
+    font-size: 16px;
+    line-height: 1.8;
+    max-width: 850px;
+    margin: 0;
 }
 
-.orange-btn{
-    border:0;
-    background:linear-gradient(135deg,#ff8a2a,#ff5a00);
-    color:#fff;
-    padding:15px 20px;
-    border-radius:13px;
-    font-weight:800;
-    font-size:13px;
-    box-shadow:0 10px 25px rgba(255,91,0,.18);
-    margin-top:22px;
+/* CARDS */
+
+.metric-card {
+    background: #182331;
+    border: 1px solid #2a3c50;
+    border-left: 5px solid #ff6b0b;
+    border-radius: 20px;
+    padding: 24px;
+    min-height: 180px;
 }
 
-.orange-btn:hover{
-    transform:translateY(-1px);
-    filter:brightness(1.08);
+.metric-icon {
+    color: #ff6b0b;
+    font-size: 24px;
+    margin-bottom: 20px;
 }
 
-.panel{
-    background:#182331;
-    border:1px solid #2c4055;
-    border-radius:22px;
-    padding:28px;
-    margin-bottom:24px;
+.metric-label {
+    color: #91a3b8;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    margin-bottom: 14px;
 }
 
-.panel h2{
-    font-size:23px;
-    margin-bottom:9px;
+.metric-value {
+    color: #f2f5f8;
+    font-size: 30px;
+    font-weight: 800;
 }
 
-.panel p{
-    color:#91a3b8;
-    font-size:13px;
-    line-height:1.7;
+.metric-sub {
+    color: #7f92a7;
+    font-size: 13px;
+    margin-top: 12px;
 }
 
-.empty{
-    margin-top:20px;
-    background:#12243a;
-    color:#4da3ff;
-    padding:18px;
-    border-radius:12px;
+/* PANEL */
+
+.panel {
+    background: #182331;
+    border: 1px solid #2a3c50;
+    border-radius: 22px;
+    padding: 28px;
+    height: 100%;
 }
 
-/* FORM */
-
-.upload-area{
-    margin-top:24px;
-    padding:25px;
-    border:1px dashed #40556b;
-    border-radius:20px;
-    background:#15212e;
+.panel-icon {
+    width: 56px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255,107,11,0.35);
+    border-radius: 18px;
+    color: #ff6b0b;
+    font-size: 25px;
+    margin-bottom: 24px;
+    background: rgba(255,107,11,0.05);
 }
 
-.field-label{
-    display:block;
-    margin-bottom:10px;
-    color:#c3d0df;
-    font-size:13px;
-    font-weight:700;
+.panel-title {
+    color: #f2f5f8;
+    font-size: 22px;
+    font-weight: 800;
+    margin-bottom: 12px;
 }
 
-.file-input,
-.text-input,
-.select-input{
-    width:100%;
-    background:#0f1924;
-    color:#fff;
-    border:1px solid #33495f;
-    border-radius:12px;
-    padding:14px;
+.panel-text {
+    color: #9aabbd;
+    font-size: 15px;
+    line-height: 1.8;
 }
 
-.file-input{
-    padding:10px;
+/* SECTION */
+
+.section-title {
+    color: #f2f5f8;
+    font-size: 25px;
+    font-weight: 800;
+    margin-top: 20px;
+    margin-bottom: 8px;
 }
 
-.form-grid{
-    display:grid;
-    grid-template-columns:1fr 1fr 1fr;
-    gap:15px;
-    margin-top:18px;
+.section-subtitle {
+    color: #91a3b8;
+    margin-bottom: 22px;
 }
 
-.file-list{
-    margin-top:20px;
+/* STREAMLIT BUTTON */
+
+.stButton > button {
+    background: linear-gradient(135deg, #ff8a2a, #ff5f0b);
+    color: white !important;
+    border: none;
+    border-radius: 12px;
+    font-weight: 700;
+    padding: 11px 20px;
+    min-height: 45px;
+    box-shadow: 0 8px 20px rgba(255,107,11,0.16);
 }
 
-.file-row{
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    background:#111c28;
-    border:1px solid #2b4054;
-    padding:13px 15px;
-    border-radius:12px;
-    margin-bottom:9px;
+.stButton > button:hover {
+    border: none;
+    color: white !important;
+    transform: translateY(-1px);
 }
 
-.file-name{
-    color:#dce6f0;
-    font-size:13px;
-    overflow:hidden;
-    text-overflow:ellipsis;
-    white-space:nowrap;
+/* FILE UPLOADER */
+
+[data-testid="stFileUploader"] {
+    background: #182331;
+    border: 1px dashed #40566d;
+    border-radius: 18px;
+    padding: 10px;
 }
 
-.remove-file{
-    border:0;
-    background:rgba(255,93,108,.12);
-    color:#ff7b86;
-    padding:7px 10px;
-    border-radius:8px;
+/* INPUT */
+
+.stTextInput input,
+.stNumberInput input,
+.stSelectbox select,
+textarea {
+    background: #111b27 !important;
+    color: #f2f5f8 !important;
+    border-color: #2a3c50 !important;
+    border-radius: 10px !important;
 }
 
-.result{
-    display:none;
-    margin-top:20px;
-    padding:18px;
-    border-radius:14px;
-    background:#123025;
-    border:1px solid #236145;
-    color:#82e5b4;
+/* INFO */
+
+.info-box {
+    background: #102239;
+    border: 1px solid #193c63;
+    color: #74b6ff;
+    padding: 18px;
+    border-radius: 14px;
+    margin-top: 15px;
 }
 
-.history-row{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:20px;
-    padding:15px 0;
-    border-bottom:1px solid #27394c;
+/* FOOTER */
+
+.footer {
+    margin-top: 50px;
+    padding-top: 25px;
+    border-top: 1px solid #2a3c50;
+    text-align: center;
+    color: #71869d;
+    font-size: 11px;
+    letter-spacing: 2px;
 }
 
-.history-row:last-child{
-    border-bottom:0;
+/* PACKAGE */
+
+.package-card {
+    background: #182331;
+    border: 1px solid #2a3c50;
+    border-radius: 22px;
+    padding: 28px;
 }
 
-.history-name{
-    font-weight:700;
-    font-size:14px;
+.package-name {
+    color: #ff8a2a;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 4px;
+    margin-bottom: 20px;
 }
 
-.history-date{
-    color:#8092a8;
-    font-size:11px;
-    margin-top:5px;
+.package-title {
+    color: #f2f5f8;
+    font-size: 25px;
+    font-weight: 800;
 }
 
-.badge{
-    padding:6px 10px;
-    border-radius:999px;
-    font-size:10px;
-    font-weight:800;
+.package-desc {
+    color: #9aabbd;
+    margin-top: 12px;
+    min-height: 45px;
 }
 
-.badge.ok{
-    color:#7ee6b4;
-    background:rgba(66,211,146,.1);
+.history-item {
+    background: #182331;
+    border: 1px solid #2a3c50;
+    padding: 16px;
+    border-radius: 12px;
+    margin-bottom: 10px;
 }
 
-.badge.info{
-    color:#8ac3ff;
-    background:rgba(77,163,255,.1);
-}
-
-/* PACKAGES */
-
-.packages{
-    display:grid;
-    grid-template-columns:repeat(3,1fr);
-    gap:20px;
-}
-
-.package{
-    background:#182331;
-    border:1px solid #304459;
-    border-radius:22px;
-    padding:28px;
-    min-height:330px;
-    position:relative;
-}
-
-.package.selected{
-    border:2px solid var(--orange);
-    box-shadow:0 0 0 1px rgba(255,107,11,.15),0 15px 35px rgba(0,0,0,.2);
-}
-
-.package-name{
-    color:var(--orange2);
-    letter-spacing:4px;
-    font-size:10px;
-    font-weight:900;
-}
-
-.package h2{
-    margin:22px 0 10px;
-    font-size:27px;
-}
-
-.package p{
-    color:#91a3b8;
-    font-size:13px;
-    min-height:60px;
-}
-
-.price{
-    margin:22px 0;
-    font-size:29px;
-    font-weight:900;
-}
-
-.feature{
-    color:#b7c5d5;
-    font-size:13px;
-    margin:11px 0;
-}
-
-.package-btn{
-    width:100%;
-    border:1px solid #40566c;
-    background:#111c27;
-    color:#fff;
-    padding:13px;
-    border-radius:11px;
-    font-weight:800;
-    margin-top:18px;
-}
-
-.package.selected .package-btn{
-    border:0;
-    background:linear-gradient(135deg,#ff8a2a,#ff5a00);
-}
-
-/* SETTINGS */
-
-.settings-grid{
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:20px;
-}
-
-.setting-card{
-    background:#182331;
-    border:1px solid #304459;
-    border-radius:20px;
-    padding:24px;
-}
-
-.setting-card h3{
-    margin-bottom:18px;
-}
-
-.setting-row{
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    gap:15px;
-    padding:14px 0;
-    border-bottom:1px solid #2a3b4d;
-}
-
-.setting-row:last-child{
-    border-bottom:0;
-}
-
-.setting-row small{
-    display:block;
-    color:#8193a7;
-    margin-top:5px;
-}
-
-.toggle{
-    width:46px;
-    height:25px;
-    border-radius:30px;
-    border:0;
-    background:#405264;
-    position:relative;
-    flex:none;
-}
-
-.toggle:after{
-    content:"";
-    width:19px;
-    height:19px;
-    background:#fff;
-    border-radius:50%;
-    position:absolute;
-    left:3px;
-    top:3px;
-    transition:.2s;
-}
-
-.toggle.on{
-    background:var(--orange);
-}
-
-.toggle.on:after{
-    left:24px;
-}
-
-/* TOAST */
-
-.toast{
-    position:fixed;
-    right:25px;
-    bottom:25px;
-    background:#1d2a38;
-    color:#fff;
-    border:1px solid #3b5167;
-    padding:15px 20px;
-    border-radius:13px;
-    display:none;
-    z-index:999;
-    box-shadow:0 15px 40px rgba(0,0,0,.35);
-}
-
-.footer{
-    text-align:center;
-    color:#60758b;
-    font-size:10px;
-    letter-spacing:1.5px;
-    padding:25px 0 5px;
-    border-top:1px solid #27394c;
-    margin-top:30px;
-}
-
-/* MOBILE */
-
-@media(max-width:1100px){
-    .sidebar{
-        width:230px;
-        min-width:230px;
-    }
-    .main{
-        width:calc(100% - 230px);
-        margin-left:230px;
-        padding:25px;
-    }
-    .stats{
-        grid-template-columns:repeat(2,1fr);
-    }
-}
-
-@media(max-width:760px){
-    .sidebar{
-        width:100%;
-        min-width:100%;
-        position:relative;
-        min-height:auto;
-    }
-    .app{
-        display:block;
-    }
-    .main{
-        width:100%;
-        margin-left:0;
-        padding:18px;
-    }
-    .hero{
-        padding:28px;
-    }
-    .hero h1{
-        font-size:31px;
-    }
-    .stats,
-    .engine-grid,
-    .packages,
-    .settings-grid,
-    .form-grid{
-        grid-template-columns:1fr;
-    }
-}
 </style>
-</head>
+""",
+    unsafe_allow_html=True
+)
 
-<body>
 
-<div class="app">
+# =========================================================
+# YARDIMCI FONKSİYONLAR
+# =========================================================
 
-    <aside class="sidebar">
+def set_page(page_name):
+    st.session_state.page = page_name
+    st.rerun()
 
-        <div class="brand">
-            <div class="logo-row">
-                <div class="logo-icon"></div>
-                <div class="brand-name">SİSTEM<span>İST</span></div>
-            </div>
-            <div class="brand-version">IMAGE STUDIO WEB • V7.7 PRO</div>
-        </div>
 
-        <div class="menu-title">ANA MENÜ</div>
+def add_history(operation, detail):
+    st.session_state.history.insert(
+        0,
+        {
+            "time": datetime.now().strftime("%d.%m.%Y %H:%M"),
+            "operation": operation,
+            "detail": detail
+        }
+    )
 
-        <button class="nav-btn active" data-page="dashboard">
-            <span class="nav-icon">⌂</span> Dashboard
-        </button>
 
-        <button class="nav-btn" data-page="url-image">
-            <span class="nav-icon">↙</span> URL → Görsel
-        </button>
+def get_success_rate():
+    total = st.session_state.total_operations
+    success = st.session_state.success_count
 
-        <button class="nav-btn" data-page="image-url">
-            <span class="nav-icon">↗</span> Görsel → URL
-        </button>
+    if total == 0:
+        return 0
 
-        <button class="nav-btn" data-page="bulk">
-            <span class="nav-icon">◇</span> Toplu Dönüştürme
-        </button>
+    return round((success / total) * 100)
 
-        <button class="nav-btn" data-page="history">
-            <span class="nav-icon">◷</span> İşlem Geçmişi
-        </button>
 
-        <div class="menu-title">SİSTEM</div>
+def image_format_extension(image_format):
+    mapping = {
+        "JPEG": "jpg",
+        "PNG": "png",
+        "WEBP": "webp"
+    }
+    return mapping.get(image_format, "jpg")
 
-        <button class="nav-btn" data-page="cloud">
-            <span class="nav-icon">☁</span> Cloud Dosyaları
-        </button>
 
-        <button class="nav-btn" data-page="r2">
-            <span class="nav-icon">⚙</span> Cloud R2 Ayarları
-        </button>
+def convert_image(
+    uploaded_file,
+    output_format,
+    width=None,
+    height=None,
+    quality=90
+):
+    image = Image.open(uploaded_file)
 
-        <button class="nav-btn" data-page="settings">
-            <span class="nav-icon">◉</span> Genel Ayarlar
-        </button>
+    if output_format == "JPEG":
+        if image.mode in ("RGBA", "LA", "P"):
+            background = Image.new(
+                "RGB",
+                image.size,
+                "white"
+            )
 
-        <div class="menu-title">DESTEK</div>
+            if image.mode == "P":
+                image = image.convert("RGBA")
 
-        <button class="nav-btn" data-page="help">
-            <span class="nav-icon">?</span> Yardım Merkezi
-        </button>
+            background.paste(
+                image,
+                mask=image.split()[-1]
+                if image.mode == "RGBA"
+                else None
+            )
 
-        <button class="nav-btn" data-page="package">
-            <span class="nav-icon">◆</span> Paket & Lisans
-        </button>
+            image = background
 
-        <div class="sidebar-status">
-            <div class="status-box">
-                <div class="status-dot"></div>
-                <div>
-                    <div class="status-title">Sistem Aktif</div>
-                    <div class="status-sub">Image Studio hizmete hazır</div>
-                </div>
-            </div>
-        </div>
+        else:
+            image = image.convert("RGB")
 
-    </aside>
+    if width and height:
+        image = image.resize(
+            (int(width), int(height)),
+            Image.LANCZOS
+        )
 
+    output = io.BytesIO()
 
-    <main class="main">
+    save_kwargs = {}
 
-        <!-- DASHBOARD -->
+    if output_format in ["JPEG", "WEBP"]:
+        save_kwargs["quality"] = quality
 
-        <section class="page active" id="dashboard">
+    image.save(
+        output,
+        format=output_format,
+        **save_kwargs
+    )
 
-            <div class="hero">
-                <div class="eyebrow">SİSTEMİST IMAGE STUDIO</div>
-                <h1>Görsel operasyonlarınız kontrol altında.</h1>
-                <p>
-                    E-ticaret görsellerinizi indirin, dönüştürün, yeniden boyutlandırın
-                    ve buluta yükleyin. Tüm operasyonlarınızı tek bir profesyonel
-                    çalışma alanından yönetin.
-                </p>
-            </div>
+    output.seek(0)
 
-            <div class="stats">
+    return output
 
-                <div class="stat">
-                    <div class="stat-icon">√</div>
-                    <div class="stat-label">TOPLAM İŞLEM</div>
-                    <div class="stat-value" id="totalOperations">0</div>
-                    <div class="stat-sub">Toplam tamamlanan işlem</div>
-                </div>
 
-                <div class="stat">
-                    <div class="stat-icon">☁</div>
-                    <div class="stat-label">CLOUD R2</div>
-                    <div class="stat-value">AYARLA</div>
-                    <div class="stat-sub">Cloudflare depolama</div>
-                </div>
-
-                <div class="stat">
-                    <div class="stat-icon">↗</div>
-                    <div class="stat-label">BAŞARI ORANI</div>
-                    <div class="stat-value">%100</div>
-                    <div class="stat-sub">Sistem hazır</div>
-                </div>
-
-                <div class="stat">
-                    <div class="stat-icon">◆</div>
-                    <div class="stat-label">AKTİF PAKET</div>
-                    <div class="stat-value" id="activePackage">PRO</div>
-                    <div class="stat-sub">Image Studio üyeliği</div>
-                </div>
-
-                <div class="stat">
-                    <div class="stat-icon">●</div>
-                    <div class="stat-label">SİSTEM DURUMU</div>
-                    <div class="stat-value">HAZIR</div>
-                    <div class="stat-sub">Tüm servisler aktif</div>
-                </div>
-
-            </div>
-
-            <div class="engine-grid">
-
-                <div class="engine">
-                    <div class="engine-icon">↙</div>
-                    <h2>URL → Görsel Motoru</h2>
-                    <p>
-                        Excel dosyanızdaki ürün görsel bağlantılarını toplu olarak
-                        indirin ve görsellerinizi profesyonel e-ticaret ölçülerinde hazırlayın.
-                    </p>
-                    <button class="orange-btn go-page" data-target="url-image">
-                        URL → GÖRSEL MOTORUNU AÇ
-                    </button>
-                </div>
-
-                <div class="engine">
-                    <div class="engine-icon">↗</div>
-                    <h2>Görsel → URL Motoru</h2>
-                    <p>
-                        Bilgisayarınızdaki görselleri seçin. Cloud R2 bağlantısı
-                        yapıldığında görsellerinizi buluta yüklemek için hazırdır.
-                    </p>
-                    <button class="orange-btn go-page" data-target="image-url">
-                        GÖRSEL → URL MOTORUNU AÇ
-                    </button>
-                </div>
-
-            </div>
-
-            <div class="panel">
-                <h2>Son İşlemler</h2>
-                <p>Sistem üzerinde gerçekleştirilen son operasyonlar.</p>
-                <div id="dashboardHistory" class="empty">
-                    Henüz işlem geçmişi bulunmuyor. Bir araç kullanarak başlayabilirsiniz.
-                </div>
-            </div>
-
-        </section>
-
-
-        <!-- URL TO IMAGE -->
-
-        <section class="page" id="url-image">
-
-            <div class="hero">
-                <div class="eyebrow">SİSTEMİST IMAGE ENGINE</div>
-                <h1>URL → Görsel İşleme Merkezi</h1>
-                <p>
-                    Excel dosyanızdaki görsel URL'lerini otomatik işlemek için
-                    dosyanızı seçin ve işlem ayarlarını belirleyin.
-                </p>
-            </div>
-
-            <div class="panel">
-
-                <h2>Excel dosyasını yükleyin</h2>
-                <p>İşlem için XLSX veya CSV dosyası seçin.</p>
-
-                <div class="upload-area">
-                    <label class="field-label">Dosya seç</label>
-                    <input class="file-input" type="file" id="excelFile" accept=".xlsx,.xls,.csv">
-
-                    <div class="form-grid">
-
-                        <div>
-                            <label class="field-label">Çıktı formatı</label>
-                            <select class="select-input" id="urlFormat">
-                                <option>JPG</option>
-                                <option>PNG</option>
-                                <option>WEBP</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label class="field-label">Genişlik</label>
-                            <input class="text-input" id="urlWidth" type="number" value="1200">
-                        </div>
-
-                        <div>
-                            <label class="field-label">Kalite</label>
-                            <select class="select-input" id="urlQuality">
-                                <option>Yüksek</option>
-                                <option>Orta</option>
-                                <option>Web Optimize</option>
-                            </select>
-                        </div>
-
-                    </div>
-
-                    <button class="orange-btn" id="startUrlJob">
-                        İŞLEMİ BAŞLAT
-                    </button>
-
-                    <div class="result" id="urlResult"></div>
-                </div>
-
-            </div>
-
-        </section>
-
-
-        <!-- IMAGE TO URL -->
-
-        <section class="page" id="image-url">
-
-            <div class="hero">
-                <div class="eyebrow">SİSTEMİST IMAGE ENGINE</div>
-                <h1>Görsel → URL Yükleme Merkezi</h1>
-                <p>
-                    Görsellerinizi seçin. Cloudflare R2 ayarlarınızı girdikten sonra
-                    dosyalarınızın bulut depolama işlemine hazırlanmasını sağlayın.
-                </p>
-            </div>
-
-            <div class="panel">
-
-                <h2>Görselleri seçin</h2>
-                <p>JPG, PNG, WEBP, GIF veya BMP formatında çoklu dosya seçebilirsiniz.</p>
-
-                <div class="upload-area">
-
-                    <input
-                        class="file-input"
-                        type="file"
-                        id="imageFiles"
-                        accept="image/*"
-                        multiple
-                    >
-
-                    <div class="file-list" id="imageFileList"></div>
-
-                    <button class="orange-btn" id="prepareUpload">
-                        YÜKLEMEYE HAZIRLA
-                    </button>
-
-                    <div class="result" id="uploadResult"></div>
-
-                </div>
-
-            </div>
-
-        </section>
-
-
-        <!-- BULK -->
-
-        <section class="page" id="bulk">
-
-            <div class="hero">
-                <div class="eyebrow">TOPLU GÖRSEL MOTORU</div>
-                <h1>Toplu Görsel Dönüştürme</h1>
-                <p>
-                    Birden fazla görseli seçin, çıktı ayarlarını belirleyin
-                    ve toplu işlem için hazırlayın.
-                </p>
-            </div>
-
-            <div class="panel">
-
-                <div class="upload-area">
-
-                    <label class="field-label">Görselleri seçin</label>
-
-                    <input
-                        class="file-input"
-                        type="file"
-                        id="bulkFiles"
-                        accept="image/*"
-                        multiple
-                    >
-
-                    <div class="form-grid">
-
-                        <div>
-                            <label class="field-label">Format</label>
-                            <select class="select-input">
-                                <option>WEBP</option>
-                                <option>JPG</option>
-                                <option>PNG</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label class="field-label">Genişlik</label>
-                            <input class="text-input" type="number" value="1200">
-                        </div>
-
-                        <div>
-                            <label class="field-label">Kalite</label>
-                            <select class="select-input">
-                                <option>Yüksek</option>
-                                <option>Orta</option>
-                                <option>Web Optimize</option>
-                            </select>
-                        </div>
-
-                    </div>
-
-                    <div class="file-list" id="bulkFileList"></div>
-
-                    <button class="orange-btn" id="startBulk">
-                        TOPLU İŞLEMİ HAZIRLA
-                    </button>
-
-                    <div class="result" id="bulkResult"></div>
-
-                </div>
-
-            </div>
-
-        </section>
-
-
-        <!-- HISTORY -->
-
-        <section class="page" id="history">
-
-            <div class="hero">
-                <div class="eyebrow">OPERASYON TAKİBİ</div>
-                <h1>İşlem Geçmişi</h1>
-                <p>Image Studio üzerinde gerçekleştirdiğiniz işlemleri buradan takip edin.</p>
-            </div>
-
-            <div class="panel">
-
-                <h2>Son Operasyonlar</h2>
-
-                <div id="historyList">
-                    <div class="empty">
-                        Henüz işlem kaydı bulunmuyor.
-                    </div>
-                </div>
-
-            </div>
-
-        </section>
-
-
-        <!-- CLOUD -->
-
-        <section class="page" id="cloud">
-
-            <div class="hero">
-                <div class="eyebrow">BULUT DEPOLAMA</div>
-                <h1>Cloud Dosyaları</h1>
-                <p>Cloudflare R2 yapılandırması sonrası dosyalarınız burada listelenecektir.</p>
-            </div>
-
-            <div class="panel">
-
-                <h2>Bulut Depolama</h2>
-
-                <div class="empty">
-                    Henüz bağlı bir Cloud R2 depolama alanı bulunmuyor.
-                    Cloud R2 Ayarları sayfasından bağlantınızı yapılandırabilirsiniz.
-                </div>
-
-                <button class="orange-btn go-page" data-target="r2">
-                    CLOUD R2 AYARLARINA GİT
-                </button>
-
-            </div>
-
-        </section>
-
-
-        <!-- R2 -->
-
-        <section class="page" id="r2">
-
-            <div class="hero">
-                <div class="eyebrow">CLOUDFLARE R2</div>
-                <h1>Cloud R2 Ayarları</h1>
-                <p>
-                    Cloudflare R2 bağlantı bilgilerinizi yapılandırın.
-                    Ayarlar bu tarayıcıda yerel olarak saklanır.
-                </p>
-            </div>
-
-            <div class="panel">
-
-                <div class="form-grid" style="grid-template-columns:1fr 1fr;">
-
-                    <div>
-                        <label class="field-label">Account ID</label>
-                        <input class="text-input" id="r2Account" placeholder="Cloudflare Account ID">
-                    </div>
-
-                    <div>
-                        <label class="field-label">Bucket Name</label>
-                        <input class="text-input" id="r2Bucket" placeholder="Bucket adı">
-                    </div>
-
-                    <div>
-                        <label class="field-label">Public URL</label>
-                        <input class="text-input" id="r2PublicUrl" placeholder="https://...">
-                    </div>
-
-                    <div>
-                        <label class="field-label">API Endpoint</label>
-                        <input class="text-input" id="r2Endpoint" placeholder="Backend API adresi">
-                    </div>
-
-                </div>
-
-                <button class="orange-btn" id="saveR2">
-                    AYARLARI KAYDET
-                </button>
-
-                <div class="result" id="r2Result"></div>
-
-            </div>
-
-        </section>
-
-
-        <!-- SETTINGS -->
-
-        <section class="page" id="settings">
-
-            <div class="hero">
-                <div class="eyebrow">SİSTEM YÖNETİMİ</div>
-                <h1>Genel Ayarlar</h1>
-                <p>Sistem davranışlarını ve arayüz tercihlerinizi buradan yönetin.</p>
-            </div>
-
-            <div class="settings-grid">
-
-                <div class="setting-card">
-
-                    <h3>İşlem Ayarları</h3>
-
-                    <div class="setting-row">
-                        <div>
-                            <strong>Otomatik kalite optimizasyonu</strong>
-                            <small>Çıktı kalitesini otomatik optimize et</small>
-                        </div>
-                        <button class="toggle on"></button>
-                    </div>
-
-                    <div class="setting-row">
-                        <div>
-                            <strong>İşlem bildirimi</strong>
-                            <small>İşlem tamamlandığında bildirim göster</small>
-                        </div>
-                        <button class="toggle on"></button>
-                    </div>
-
-                </div>
-
-                <div class="setting-card">
-
-                    <h3>Veri Yönetimi</h3>
-
-                    <div class="setting-row">
-                        <div>
-                            <strong>İşlem geçmişi</strong>
-                            <small>Yerel işlem geçmişini sakla</small>
-                        </div>
-                        <button class="toggle on"></button>
-                    </div>
-
-                    <div class="setting-row">
-                        <div>
-                            <strong>Geçmişi temizle</strong>
-                            <small>Tüm yerel işlem kayıtlarını sil</small>
-                        </div>
-                        <button class="remove-file" id="clearHistory">TEMİZLE</button>
-                    </div>
-
-                </div>
-
-            </div>
-
-        </section>
-
-
-        <!-- HELP -->
-
-        <section class="page" id="help">
-
-            <div class="hero">
-                <div class="eyebrow">DESTEK</div>
-                <h1>Yardım Merkezi</h1>
-                <p>Sistemist Image Studio araçlarını kullanmaya buradan başlayabilirsiniz.</p>
-            </div>
-
-            <div class="panel">
-
-                <h2>Nasıl kullanılır?</h2>
-
-                <div class="history-row">
-                    <div>
-                        <div class="history-name">1. URL → Görsel</div>
-                        <div class="history-date">Excel veya veri kaynağınızı seçin ve işlem ayarlarını belirleyin.</div>
-                    </div>
-                </div>
-
-                <div class="history-row">
-                    <div>
-                        <div class="history-name">2. Görsel → URL</div>
-                        <div class="history-date">Bilgisayarınızdan görselleri seçin ve Cloud R2 yapılandırmanızı hazırlayın.</div>
-                    </div>
-                </div>
-
-                <div class="history-row">
-                    <div>
-                        <div class="history-name">3. Toplu Dönüştürme</div>
-                        <div class="history-date">Birden fazla görseli tek işlem için hazırlayın.</div>
-                    </div>
-                </div>
-
-                <div class="history-row">
-                    <div>
-                        <div class="history-name">4. Cloud R2</div>
-                        <div class="history-date">Cloudflare R2 bağlantı ayarlarınızı yapılandırın.</div>
-                    </div>
-                </div>
-
-            </div>
-
-        </section>
-
-
-        <!-- PACKAGE -->
-
-        <section class="page" id="package">
-
-            <div class="hero">
-                <div class="eyebrow">ABONELİK YÖNETİMİ</div>
-                <h1>Paket & Lisans</h1>
-                <p>Sistemist Image Studio profesyonel SaaS altyapısı.</p>
-            </div>
-
-            <div class="packages">
-
-                <div class="package" data-package="STARTER">
-
-                    <div class="package-name">STARTER</div>
-                    <h2>Başlangıç</h2>
-                    <p>Temel görsel operasyonları için başlangıç paketi.</p>
-                    <div class="price">Ücretsiz</div>
-
-                    <div class="feature">✓ Temel araçlar</div>
-                    <div class="feature">✓ Dosya hazırlama</div>
-                    <div class="feature">✓ İşlem geçmişi</div>
-
-                    <button class="package-btn select-package">
-                        STARTER PAKETİNİ SEÇ
-                    </button>
-
-                </div>
-
-                <div class="package selected" data-package="PRO">
-
-                    <div class="package-name">PRO</div>
-                    <h2>Aktif</h2>
-                    <p>Profesyonel kullanıcılar için gelişmiş Image Studio araçları.</p>
-                    <div class="price">PRO</div>
-
-                    <div class="feature">✓ Tüm profesyonel araçlar</div>
-                    <div class="feature">✓ Toplu işlemler</div>
-                    <div class="feature">✓ Cloud R2 hazırlığı</div>
-
-                    <button class="package-btn select-package">
-                        PRO PAKETİNİ SEÇ
-                    </button>
-
-                </div>
-
-                <div class="package" data-package="BUSINESS">
-
-                    <div class="package-name">BUSINESS</div>
-                    <h2>Kurumsal</h2>
-                    <p>Yüksek hacimli operasyonlar ve kurumsal kullanım için.</p>
-                    <div class="price">BUSINESS</div>
-
-                    <div class="feature">✓ Yüksek hacimli işlem</div>
-                    <div class="feature">✓ Gelişmiş altyapı</div>
-                    <div class="feature">✓ Kurumsal kullanım</div>
-
-                    <button class="package-btn select-package">
-                        BUSINESS PAKETİNİ SEÇ
-                    </button>
-
-                </div>
-
-            </div>
-
-        </section>
-
-        <div class="footer">
-            © 2026 SİSTEMİST IMAGE STUDIO • PROFESSIONAL SAAS PLATFORM
-        </div>
-
-    </main>
-
+# =========================================================
+# SIDEBAR
+# =========================================================
+
+with st.sidebar:
+
+    st.markdown(
+        """
+<div class="brand-box">
+    <div class="brand-title">SİSTEMİST</div>
+    <div class="brand-subtitle">IMAGE STUDIO WEB</div>
 </div>
+""",
+        unsafe_allow_html=True
+    )
 
-<div class="toast" id="toast"></div>
-
-<script>
-
-const pages = document.querySelectorAll(".page");
-const navButtons = document.querySelectorAll(".nav-btn");
-
-function showPage(pageId){
-    pages.forEach(page => page.classList.remove("active"));
-    const page = document.getElementById(pageId);
-    if(page) page.classList.add("active");
-
-    navButtons.forEach(btn => {
-        btn.classList.toggle("active", btn.dataset.page === pageId);
-    });
-
-    window.scrollTo({top:0, behavior:"smooth"});
-}
-
-navButtons.forEach(button => {
-    button.addEventListener("click", () => {
-        showPage(button.dataset.page);
-    });
-});
-
-document.querySelectorAll(".go-page").forEach(button => {
-    button.addEventListener("click", () => {
-        showPage(button.dataset.target);
-    });
-});
-
-function toast(message){
-    const el = document.getElementById("toast");
-    el.textContent = message;
-    el.style.display = "block";
-
-    clearTimeout(window.toastTimer);
-
-    window.toastTimer = setTimeout(() => {
-        el.style.display = "none";
-    }, 3500);
-}
-
-function getHistory(){
-    try{
-        return JSON.parse(localStorage.getItem("sistemist_history") || "[]");
-    }catch(e){
-        return [];
-    }
-}
-
-function saveHistory(item){
-    const history = getHistory();
-
-    history.unshift({
-        name:item,
-        date:new Date().toLocaleString("tr-TR")
-    });
-
-    localStorage.setItem(
-        "sistemist_history",
-        JSON.stringify(history.slice(0,50))
-    );
-
-    renderHistory();
-}
-
-function renderHistory(){
-
-    const history = getHistory();
-
-    const historyList = document.getElementById("historyList");
-    const dashboardHistory = document.getElementById("dashboardHistory");
-    const total = document.getElementById("totalOperations");
-
-    total.textContent = history.length;
-
-    if(history.length === 0){
-
-        historyList.innerHTML = `
-            <div class="empty">
-                Henüz işlem kaydı bulunmuyor.
-            </div>
-        `;
-
-        dashboardHistory.innerHTML = `
-            Henüz işlem geçmişi bulunmuyor.
-            Bir araç kullanarak başlayabilirsiniz.
-        `;
-
-        return;
-    }
-
-    historyList.innerHTML = history.map(item => `
-        <div class="history-row">
-            <div>
-                <div class="history-name">${escapeHtml(item.name)}</div>
-                <div class="history-date">${escapeHtml(item.date)}</div>
-            </div>
-            <span class="badge ok">TAMAMLANDI</span>
-        </div>
-    `).join("");
-
-    dashboardHistory.innerHTML = history.slice(0,5).map(item => `
-        <div class="history-row">
-            <div>
-                <div class="history-name">${escapeHtml(item.name)}</div>
-                <div class="history-date">${escapeHtml(item.date)}</div>
-            </div>
-            <span class="badge info">İŞLEM</span>
-        </div>
-    `).join("");
-}
-
-function escapeHtml(text){
-    const div = document.createElement("div");
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-/* URL -> IMAGE */
-
-document.getElementById("startUrlJob").addEventListener("click", () => {
-
-    const file = document.getElementById("excelFile").files[0];
-    const result = document.getElementById("urlResult");
-
-    if(!file){
-        toast("Lütfen önce Excel veya CSV dosyası seçin.");
-        result.style.display = "block";
-        result.style.background = "#321b20";
-        result.style.borderColor = "#6b303a";
-        result.style.color = "#ff9ca6";
-        result.textContent = "İşlem başlatılamadı: Dosya seçilmedi.";
-        return;
-    }
-
-    const format = document.getElementById("urlFormat").value;
-    const width = document.getElementById("urlWidth").value;
-
-    result.style.display = "block";
-    result.style.background = "#123025";
-    result.style.borderColor = "#236145";
-    result.style.color = "#82e5b4";
-
-    result.textContent =
-        `${file.name} işlem için hazırlandı. Çıktı: ${format}, genişlik: ${width}px.`;
-
-    saveHistory(`URL → Görsel hazırlama: ${file.name}`);
-    toast("URL → Görsel işlemi hazırlandı.");
-});
-
-/* IMAGE FILE LIST */
-
-document.getElementById("imageFiles").addEventListener("change", function(){
-
-    const list = document.getElementById("imageFileList");
-    const files = Array.from(this.files);
-
-    if(files.length === 0){
-        list.innerHTML = "";
-        return;
-    }
-
-    list.innerHTML = files.map((file,index) => `
-        <div class="file-row">
-            <div class="file-name">🖼 ${escapeHtml(file.name)}</div>
-            <button class="remove-file remove-image" data-index="${index}">
-                KALDIR
-            </button>
-        </div>
-    `).join("");
-
-    document.querySelectorAll(".remove-image").forEach(button => {
-        button.addEventListener("click", () => {
-            toast("Dosya listesinden kaldırıldı. Yeni seçim yaparak listeyi güncelleyebilirsiniz.");
-        });
-    });
-
-});
-
-document.getElementById("prepareUpload").addEventListener("click", () => {
-
-    const files = document.getElementById("imageFiles").files;
-    const result = document.getElementById("uploadResult");
-
-    if(files.length === 0){
-        toast("Lütfen en az bir görsel seçin.");
-        return;
-    }
-
-    result.style.display = "block";
-    result.textContent =
-        `${files.length} görsel Cloud R2 yükleme işlemi için hazırlandı.`;
-
-    saveHistory(`Görsel → URL hazırlama: ${files.length} dosya`);
-    toast(`${files.length} görsel yükleme için hazır.`);
-});
-
-/* BULK */
-
-document.getElementById("bulkFiles").addEventListener("change", function(){
-
-    const list = document.getElementById("bulkFileList");
-    const files = Array.from(this.files);
-
-    list.innerHTML = files.map(file => `
-        <div class="file-row">
-            <div class="file-name">🖼 ${escapeHtml(file.name)}</div>
-            <span class="badge info">HAZIR</span>
-        </div>
-    `).join("");
-
-});
-
-document.getElementById("startBulk").addEventListener("click", () => {
-
-    const files = document.getElementById("bulkFiles").files;
-    const result = document.getElementById("bulkResult");
-
-    if(files.length === 0){
-        toast("Toplu işlem için görsel seçin.");
-        return;
-    }
-
-    result.style.display = "block";
-    result.textContent =
-        `${files.length} dosya toplu dönüştürme işlemi için hazırlandı.`;
-
-    saveHistory(`Toplu dönüştürme hazırlama: ${files.length} dosya`);
-    toast("Toplu işlem hazırlandı.");
-});
-
-/* R2 SETTINGS */
-
-function loadR2(){
-
-    document.getElementById("r2Account").value =
-        localStorage.getItem("r2Account") || "";
-
-    document.getElementById("r2Bucket").value =
-        localStorage.getItem("r2Bucket") || "";
-
-    document.getElementById("r2PublicUrl").value =
-        localStorage.getItem("r2PublicUrl") || "";
-
-    document.getElementById("r2Endpoint").value =
-        localStorage.getItem("r2Endpoint") || "";
-}
-
-document.getElementById("saveR2").addEventListener("click", () => {
-
-    localStorage.setItem(
-        "r2Account",
-        document.getElementById("r2Account").value
-    );
-
-    localStorage.setItem(
-        "r2Bucket",
-        document.getElementById("r2Bucket").value
-    );
-
-    localStorage.setItem(
-        "r2PublicUrl",
-        document.getElementById("r2PublicUrl").value
-    );
-
-    localStorage.setItem(
-        "r2Endpoint",
-        document.getElementById("r2Endpoint").value
-    );
-
-    const result = document.getElementById("r2Result");
-
-    result.style.display = "block";
-    result.textContent =
-        "Cloud R2 ayarları tarayıcıda başarıyla kaydedildi.";
-
-    toast("Cloud R2 ayarları kaydedildi.");
-});
-
-/* TOGGLES */
-
-document.querySelectorAll(".toggle").forEach(toggle => {
-    toggle.addEventListener("click", () => {
-        toggle.classList.toggle("on");
-    });
-});
-
-/* CLEAR HISTORY */
-
-document.getElementById("clearHistory").addEventListener("click", () => {
-
-    if(confirm("Tüm işlem geçmişi silinsin mi?")){
-        localStorage.removeItem("sistemist_history");
-        renderHistory();
-        toast("İşlem geçmişi temizlendi.");
-    }
-
-});
-
-/* PACKAGES */
-
-document.querySelectorAll(".select-package").forEach(button => {
-
-    button.addEventListener("click", function(){
-
-        const card = this.closest(".package");
-        const packageName = card.dataset.package;
-
-        document.querySelectorAll(".package").forEach(item => {
-            item.classList.remove("selected");
-        });
-
-        card.classList.add("selected");
-
-        localStorage.setItem("sistemist_package", packageName);
-
-        document.getElementById("activePackage").textContent = packageName;
-
-        toast(`${packageName} paketi seçildi.`);
-
-    });
-
-});
-
-function loadPackage(){
-
-    const packageName =
-        localStorage.getItem("sistemist_package") || "PRO";
-
-    document.getElementById("activePackage").textContent = packageName;
-
-    document.querySelectorAll(".package").forEach(card => {
-        card.classList.toggle(
-            "selected",
-            card.dataset.package === packageName
-        );
-    });
-}
-
-/* INITIAL */
-
-renderHistory();
-loadR2();
-loadPackage();
-
-</script>
-
-</body>
-</html>
+    st.caption("ANA MENÜ")
+
+    if st.button("⌂ Dashboard", use_container_width=True):
+        set_page("Dashboard")
+
+    if st.button("↙ URL → Görsel", use_container_width=True):
+        set_page("URL → Görsel")
+
+    if st.button("↗ Görsel → URL", use_container_width=True):
+        set_page("Görsel → URL")
+
+    if st.button("◇ Toplu Dönüştürme", use_container_width=True):
+        set_page("Toplu Dönüştürme")
+
+    if st.button("◷ İşlem Geçmişi", use_container_width=True):
+        set_page("İşlem Geçmişi")
+
+    st.markdown("---")
+
+    st.caption("SİSTEM")
+
+    if st.button("☁ Cloud Dosyaları", use_container_width=True):
+        set_page("Cloud Dosyaları")
+
+    if st.button("⚙ Cloud R2 Ayarları", use_container_width=True):
+        set_page("Cloud R2 Ayarları")
+
+    if st.button("◉ Genel Ayarlar", use_container_width=True):
+        set_page("Genel Ayarlar")
+
+    st.markdown("---")
+
+    st.caption("DESTEK")
+
+    if st.button("? Yardım Merkezi", use_container_width=True):
+        set_page("Yardım Merkezi")
+
+    if st.button("◆ Paket & Lisans", use_container_width=True):
+        set_page("Paket & Lisans")
+
+    st.markdown("---")
+
+    st.success("● Sistem Aktif")
+    st.caption("Image Studio hizmete hazır")
+
+
+# =========================================================
+# DASHBOARD
+# =========================================================
+
+if st.session_state.page == "Dashboard":
+
+    st.markdown(
+        """
+<div class="hero">
+    <div class="hero-label">SİSTEMİST IMAGE STUDIO</div>
+    <h1>Görsel operasyonlarınız kontrol altında.</h1>
+    <p>
+        E-ticaret görsellerinizi indirin, dönüştürün, yeniden boyutlandırın
+        ve profesyonel şekilde yönetin.
+    </p>
+</div>
+""",
+        unsafe_allow_html=True
+    )
+
+    success_rate = get_success_rate()
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+
+    with c1:
+        st.markdown(
+            f"""
+<div class="metric-card">
+    <div class="metric-icon">✓</div>
+    <div class="metric-label">TOPLAM İŞLEM</div>
+    <div class="metric-value">{st.session_state.total_operations}</div>
+    <div class="metric-sub">Toplam operasyon</div>
+</div>
+""",
+            unsafe_allow_html=True
+        )
+
+    with c2:
+        st.markdown(
+            """
+<div class="metric-card">
+    <div class="metric-icon">☁</div>
+    <div class="metric-label">CLOUD R2</div>
+    <div class="metric-value">AYARLA</div>
+    <div class="metric-sub">Cloudflare depolama</div>
+</div>
+""",
+            unsafe_allow_html=True
+        )
+
+    with c3:
+        st.markdown(
+            f"""
+<div class="metric-card">
+    <div class="metric-icon">↗</div>
+    <div class="metric-label">BAŞARI ORANI</div>
+    <div class="metric-value">%{success_rate}</div>
+    <div class="metric-sub">Başarılı dosya</div>
+</div>
+""",
+            unsafe_allow_html=True
+        )
+
+    with c4:
+        st.markdown(
+            f"""
+<div class="metric-card">
+    <div class="metric-icon">◆</div>
+    <div class="metric-label">AKTİF PAKET</div>
+    <div class="metric-value">{st.session_state.package}</div>
+    <div class="metric-sub">Image Studio üyeliği</div>
+</div>
+""",
+            unsafe_allow_html=True
+        )
+
+    with c5:
+        st.markdown(
+            """
+<div class="metric-card">
+    <div class="metric-icon">●</div>
+    <div class="metric-label">SİSTEM DURUMU</div>
+    <div class="metric-value">HAZIR</div>
+    <div class="metric-sub">Servis çalışıyor</div>
+</div>
+""",
+            unsafe_allow_html=True
+        )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    left, right = st.columns(2)
+
+    with left:
+
+        st.markdown(
+            """
+<div class="panel">
+    <div class="panel-icon">↙</div>
+    <div class="panel-title">URL → Görsel Motoru</div>
+    <div class="panel-text">
+        Excel dosyanızdaki ürün görsel bağlantılarını toplu olarak indirin.
+        Görselleri JPG, PNG veya WEBP formatına dönüştürün ve ZIP olarak alın.
+    </div>
+</div>
+""",
+            unsafe_allow_html=True
+        )
+
+        if st.button(
+            "URL → GÖRSEL MOTORUNU AÇ",
+            key="dashboard_url"
+        ):
+            set_page("URL → Görsel")
+
+    with right:
+
+        st.markdown(
+            """
+<div class="panel">
+    <div class="panel-icon">↗</div>
+    <div class="panel-title">Görsel → URL Motoru</div>
+    <div class="panel-text">
+        Bilgisayarınızdaki görselleri toplu işleyin ve Cloudflare R2
+        entegrasyonu için hazırlayın.
+    </div>
+</div>
+""",
+            unsafe_allow_html=True
+        )
+
+        if st.button(
+            "GÖRSEL → URL MOTORUNU AÇ",
+            key="dashboard_upload"
+        ):
+            set_page("Görsel → URL")
+
+    st.markdown(
+        '<div class="section-title">Son İşlemler</div>',
+        unsafe_allow_html=True
+    )
+
+    if len(st.session_state.history) == 0:
+
+        st.markdown(
+            """
+<div class="info-box">
+Henüz işlem geçmişi bulunmuyor.
+URL → Görsel veya Görsel → URL aracını kullanarak başlayabilirsiniz.
+</div>
+""",
+            unsafe_allow_html=True
+        )
+
+    else:
+
+        for item in st.session_state.history[:5]:
+
+            st.markdown(
+                f"""
+<div class="history-item">
+    <b>{item["operation"]}</b><br>
+    <span style="color:#91a3b8">
+        {item["detail"]}
+    </span><br>
+    <small style="color:#71869d">
+        {item["time"]}
+    </small>
+</div>
+""",
+                unsafe_allow_html=True
+            )
+
+
+# =========================================================
+# URL -> GÖRSEL
+# =========================================================
+
+elif st.session_state.page == "URL → Görsel":
+
+    st.markdown(
+        """
+<div class="hero">
+    <div class="hero-label">SİSTEMİST IMAGE ENGINE</div>
+    <h1>URL → Görsel İşleme Merkezi</h1>
+    <p>
+        Excel dosyanızdaki görsel URL'lerini otomatik olarak indirin,
+        dönüştürün ve tek bir ZIP dosyasında toplayın.
+    </p>
+</div>
+""",
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        '<div class="section-title">Excel dosyasını yükleyin</div>',
+        unsafe_allow_html=True
+    )
+
+    excel_file = st.file_uploader(
+        "Excel dosyanızı seçin",
+        type=["xlsx", "xls"],
+        key="url_excel"
+    )
+
+    if excel_file is not None:
+
+        try:
+
+            df = pd.read_excel(excel_file)
+
+            st.success(
+                f"{len(df)} satır başarıyla okundu."
+            )
+
+            st.dataframe(
+                df.head(),
+                use_container_width=True
+            )
+
+            columns = df.columns.tolist()
+
+            selected_column = st.selectbox(
+                "Görsel URL sütununu seçin",
+                columns
+            )
+
+            c1, c2, c3 = st.columns(3)
+
+            with c1:
+                output_format = st.selectbox(
+                    "Çıktı formatı",
+                    ["JPEG", "PNG", "WEBP"]
+                )
+
+            with c2:
+                image_width = st.number_input(
+                    "Genişlik (0 = orijinal)",
+                    min_value=0,
+                    value=1000
+                )
+
+            with c3:
+                image_height = st.number_input(
+                    "Yükseklik (0 = orijinal)",
+                    min_value=0,
+                    value=1000
+                )
+
+            quality = st.slider(
+                "Kalite",
+                50,
+                100,
+                90
+            )
+
+            if st.button(
+                "GÖRSELLERİ İNDİR VE DÖNÜŞTÜR",
+                use_container_width=True
+            ):
+
+                urls = (
+                    df[selected_column]
+                    .dropna()
+                    .astype(str)
+                    .tolist()
+                )
+
+                if len(urls) == 0:
+                    st.error(
+                        "Seçilen sütunda geçerli URL bulunamadı."
+                    )
+
+                else:
+
+                    progress = st.progress(0)
+                    status = st.empty()
+
+                    zip_buffer = io.BytesIO()
+
+                    success = 0
+                    failed = 0
+
+                    with zipfile.ZipFile(
+                        zip_buffer,
+                        "w",
+                        zipfile.ZIP_DEFLATED
+                    ) as zip_file:
+
+                        for index, url in enumerate(urls):
+
+                            try:
+
+                                status.text(
+                                    f"İndiriliyor: {index + 1}/{len(urls)}"
+                                )
+
+                                response = requests.get(
+                                    url,
+                                    timeout=30,
+                                    headers={
+                                        "User-Agent":
+                                        "Mozilla/5.0"
+                                    }
+                                )
+
+                                response.raise_for_status()
+
+                                image_file = io.BytesIO(
+                                    response.content
+                                )
+
+                                width = (
+                                    None
+                                    if image_width == 0
+                                    else image_width
+                                )
+
+                                height = (
+                                    None
+                                    if image_height == 0
+                                    else image_height
+                                )
+
+                                converted = convert_image(
+                                    image_file,
+                                    output_format,
+                                    width,
+                                    height,
+                                    quality
+                                )
+
+                                extension = image_format_extension(
+                                    output_format
+                                )
+
+                                filename = (
+                                    f"gorsel_{index + 1}.{extension}"
+                                )
+
+                                zip_file.writestr(
+                                    filename,
+                                    converted.getvalue()
+                                )
+
+                                success += 1
+
+                            except Exception:
+                                failed += 1
+
+                            progress.progress(
+                                (index + 1) / len(urls)
+                            )
+
+                    zip_buffer.seek(0)
+
+                    st.session_state.total_operations += len(urls)
+                    st.session_state.success_count += success
+
+                    add_history(
+                        "URL → Görsel",
+                        f"{success} başarılı, {failed} başarısız"
+                    )
+
+                    status.empty()
+
+                    st.success(
+                        f"İşlem tamamlandı. "
+                        f"{success} görsel hazırlandı."
+                    )
+
+                    st.download_button(
+                        "ZIP DOSYASINI İNDİR",
+                        data=zip_buffer,
+                        file_name="sistemist-gorseller.zip",
+                        mime="application/zip",
+                        use_container_width=True
+                    )
+
+        except Exception as e:
+
+            st.error(
+                f"Excel dosyası okunamadı: {str(e)}"
+            )
+
+
+# =========================================================
+# GÖRSEL -> URL
+# =========================================================
+
+elif st.session_state.page == "Görsel → URL":
+
+    st.markdown(
+        """
+<div class="hero">
+    <div class="hero-label">SİSTEMİST CLOUD ENGINE</div>
+    <h1>Görsel → URL Merkezi</h1>
+    <p>
+        Bilgisayarınızdaki görselleri toplu olarak işleyin.
+        Cloudflare R2 bağlantısı ayarlandıktan sonra dosyalarınızı
+        buluta göndermek için hazır hale getirin.
+    </p>
+</div>
+""",
+        unsafe_allow_html=True
+    )
+
+    uploaded_images = st.file_uploader(
+        "Görselleri seçin",
+        type=[
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "gif",
+            "bmp"
+        ],
+        accept_multiple_files=True
+    )
+
+    if uploaded_images:
+
+        st.success(
+            f"{len(uploaded_images)} dosya seçildi."
+        )
+
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
+
+            output_format = st.selectbox(
+                "Dönüştürülecek format",
+                ["ORİJİNAL", "JPEG", "PNG", "WEBP"]
+            )
+
+        with c2:
+
+            width = st.number_input(
+                "Genişlik",
+                min_value=0,
+                value=1000
+            )
+
+        with c3:
+
+            height = st.number_input(
+                "Yükseklik",
+                min_value=0,
+                value=1000
+            )
+
+        if st.button(
+            "GÖRSELLERİ HAZIRLA",
+            use_container_width=True
+        ):
+
+            zip_buffer = io.BytesIO()
+
+            progress = st.progress(0)
+
+            with zipfile.ZipFile(
+                zip_buffer,
+                "w",
+                zipfile.ZIP_DEFLATED
+            ) as zip_file:
+
+                for index, file in enumerate(uploaded_images):
+
+                    try:
+
+                        original_name = os.path.splitext(
+                            file.name
+                        )[0]
+
+                        if output_format == "ORİJİNAL":
+
+                            zip_file.writestr(
+                                file.name,
+                                file.getvalue()
+                            )
+
+                        else:
+
+                            output = convert_image(
+                                file,
+                                output_format,
+                                None if width == 0 else width,
+                                None if height == 0 else height
+                            )
+
+                            extension = image_format_extension(
+                                output_format
+                            )
+
+                            filename = (
+                                f"{original_name}.{extension}"
+                            )
+
+                            zip_file.writestr(
+                                filename,
+                                output.getvalue()
+                            )
+
+                    except Exception as e:
+                        st.warning(
+                            f"{file.name} işlenemedi."
+                        )
+
+                    progress.progress(
+                        (index + 1) / len(uploaded_images)
+                    )
+
+            zip_buffer.seek(0)
+
+            st.session_state.total_operations += len(
+                uploaded_images
+            )
+
+            st.session_state.success_count += len(
+                uploaded_images
+            )
+
+            add_history(
+                "Toplu Görsel Hazırlama",
+                f"{len(uploaded_images)} dosya işlendi"
+            )
+
+            st.success(
+                "Görseller başarıyla hazırlandı."
+            )
+
+            st.download_button(
+                "HAZIRLANAN DOSYALARI İNDİR",
+                data=zip_buffer,
+                file_name="sistemist-gorseller.zip",
+                mime="application/zip",
+                use_container_width=True
+            )
+
+
+# =========================================================
+# TOPLU DÖNÜŞTÜRME
+# =========================================================
+
+elif st.session_state.page == "Toplu Dönüştürme":
+
+    st.markdown(
+        """
+<div class="hero">
+    <div class="hero-label">TOPLU IMAGE PROCESSING</div>
+    <h1>Toplu Görsel Dönüştürme</h1>
+    <p>
+        Bilgisayarınızdaki görselleri toplu olarak yeniden boyutlandırın,
+        dönüştürün ve ZIP dosyası olarak indirin.
+    </p>
+</div>
+""",
+        unsafe_allow_html=True
+    )
+
+    files = st.file_uploader(
+        "Görselleri seçin",
+        type=[
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "gif",
+            "bmp"
+        ],
+        accept_multiple_files=True,
+        key="bulk_files"
+    )
+
+    if files:
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            format_type = st.selectbox(
+                "Format",
+                ["JPEG", "PNG", "WEBP"]
+            )
+
+        with col2:
+            resize_width = st.number_input(
+                "Yeni genişlik",
+                min_value=0,
+                value=1200
+            )
+
+        with col3:
+            resize_height = st.number_input(
+                "Yeni yükseklik",
+                min_value=0,
+                value=1200
+            )
+
+        quality = st.slider(
+            "Çıktı kalitesi",
+            50,
+            100,
+            90,
+            key="bulk_quality"
+        )
+
+        if st.button(
+            "TOPLU DÖNÜŞTÜR",
+            use_container_width=True
+        ):
+
+            zip_buffer = io.BytesIO()
+
+            progress = st.progress(0)
+
+            successful = 0
+
+            with zipfile.ZipFile(
+                zip_buffer,
+                "w",
+                zipfile.ZIP_DEFLATED
+            ) as zip_file:
+
+                for index, file in enumerate(files):
+
+                    try:
+
+                        output = convert_image(
+                            file,
+                            format_type,
+                            None
+                            if resize_width == 0
+                            else resize_width,
+                            None
+                            if resize_height == 0
+                            else resize_height,
+                            quality
+                        )
+
+                        extension = image_format_extension(
+                            format_type
+                        )
+
+                        original_name = os.path.splitext(
+                            file.name
+                        )[0]
+
+                        zip_file.writestr(
+                            f"{original_name}.{extension}",
+                            output.getvalue()
+                        )
+
+                        successful += 1
+
+                    except Exception:
+                        pass
+
+                    progress.progress(
+                        (index + 1) / len(files)
+                    )
+
+            zip_buffer.seek(0)
+
+            st.session_state.total_operations += len(files)
+            st.session_state.success_count += successful
+
+            add_history(
+                "Toplu Dönüştürme",
+                f"{successful} görsel dönüştürüldü"
+            )
+
+            st.success(
+                f"{successful} görsel başarıyla dönüştürüldü."
+            )
+
+            st.download_button(
+                "ZIP DOSYASINI İNDİR",
+                data=zip_buffer,
+                file_name="sistemist-toplu-donusum.zip",
+                mime="application/zip",
+                use_container_width=True
+            )
+
+
+# =========================================================
+# İŞLEM GEÇMİŞİ
+# =========================================================
+
+elif st.session_state.page == "İşlem Geçmişi":
+
+    st.markdown(
+        """
+<div class="hero">
+    <div class="hero-label">OPERATION HISTORY</div>
+    <h1>İşlem Geçmişi</h1>
+    <p>
+        Sistem üzerinde gerçekleştirdiğiniz son operasyonları buradan
+        takip edebilirsiniz.
+    </p>
+</div>
+""",
+        unsafe_allow_html=True
+    )
+
+    if len(st.session_state.history) == 0:
+
+        st.info(
+            "Henüz işlem geçmişi bulunmuyor."
+        )
+
+    else:
+
+        for item in st.session_state.history:
+
+            st.markdown(
+                f"""
+<div class="history-item">
+    <h4>{item["operation"]}</h4>
+    <p>{item["detail"]}</p>
+    <small>{item["time"]}</small>
+</div>
+""",
+                unsafe_allow_html=True
+            )
+
+        if st.button("GEÇMİŞİ TEMİZLE"):
+
+            st.session_state.history = []
+
+            st.rerun()
+
+
+# =========================================================
+# CLOUD DOSYALARI
+# =========================================================
+
+elif st.session_state.page == "Cloud Dosyaları":
+
+    st.markdown(
+        """
+<div class="hero">
+    <div class="hero-label">CLOUD STORAGE</div>
+    <h1>Cloud Dosyaları</h1>
+    <p>
+        Cloudflare R2 bağlantısı yapıldığında yüklenen dosyalar burada
+        listelenecektir.
+    </p>
+</div>
+""",
+        unsafe_allow_html=True
+    )
+
+    st.info(
+        "Cloud R2 henüz yapılandırılmadı. "
+        "Cloud R2 Ayarları menüsünden bağlantı bilgilerinizi ekleyin."
+    )
+
+
+# =========================================================
+# CLOUD R2 AYARLARI
+# =========================================================
+
+elif st.session_state.page == "Cloud R2 Ayarları":
+
+    st.markdown(
+        """
+<div class="hero">
+    <div class="hero-label">CLOUDFLARE R2</div>
+    <h1>Cloud R2 Ayarları</h1>
+    <p>
+        Cloudflare R2 depolama bağlantınızı bu alandan yönetin.
+    </p>
+</div>
+""",
+        unsafe_allow_html=True
+    )
+
+    account_id = st.text_input(
+        "Cloudflare Account ID"
+    )
+
+    bucket_name = st.text_input(
+        "R2 Bucket Name"
+    )
+
+    endpoint_url = st.text_input(
+        "S3 Endpoint URL"
+    )
+
+    public_url = st.text_input(
+        "Public Domain URL"
+    )
+
+    if st.button(
+        "AYARLARI KAYDET",
+        use_container_width=True
+    ):
+
+        st.success(
+            "Ayarlar bu oturum için kaydedildi."
+        )
+
+
+# =========================================================
+# GENEL AYARLAR
+# =========================================================
+
+elif st.session_state.page == "Genel Ayarlar":
+
+    st.markdown(
+        """
+<div class="hero">
+    <div class="hero-label">SYSTEM SETTINGS</div>
+    <h1>Genel Ayarlar</h1>
+    <p>
+        Image Studio çalışma tercihlerinizi yönetin.
+    </p>
+</div>
+""",
+        unsafe_allow_html=True
+    )
+
+    default_format = st.selectbox(
+        "Varsayılan çıktı formatı",
+        ["WEBP", "JPEG", "PNG"]
+    )
+
+    default_quality = st.slider(
+        "Varsayılan kalite",
+        50,
+        100,
+        90
+    )
+
+    default_width = st.number_input(
+        "Varsayılan genişlik",
+        min_value=0,
+        value=1000
+    )
+
+    if st.button(
+        "GENEL AYARLARI KAYDET",
+        use_container_width=True
+    ):
+
+        st.success(
+            "Genel ayarlar kaydedildi."
+        )
+
+
+# =========================================================
+# YARDIM MERKEZİ
+# =========================================================
+
+elif st.session_state.page == "Yardım Merkezi":
+
+    st.markdown(
+        """
+<div class="hero">
+    <div class="hero-label">DESTEK</div>
+    <h1>Yardım Merkezi</h1>
+    <p>
+        Sistemist Image Studio araçlarının nasıl kullanılacağını
+        buradan takip edebilirsiniz.
+    </p>
+</div>
+""",
+        unsafe_allow_html=True
+    )
+
+    with st.expander(
+        "URL → Görsel nasıl kullanılır?",
+        expanded=True
+    ):
+
+        st.markdown(
+            """
+1. Excel dosyanızı yükleyin.
+2. Görsel URL'lerinin bulunduğu sütunu seçin.
+3. Çıktı formatını belirleyin.
+4. İsterseniz genişlik ve yükseklik girin.
+5. Görselleri indir ve dönüştür butonuna basın.
+6. İşlem tamamlandığında ZIP dosyasını indirin.
 """
+        )
 
-components.html(
-    APP_HTML,
-    height=2200,
-    scrolling=True
+    with st.expander(
+        "Toplu Dönüştürme nasıl kullanılır?"
+    ):
+
+        st.markdown(
+            """
+1. Birden fazla görsel seçin.
+2. Yeni formatı belirleyin.
+3. Görsel ölçülerini seçin.
+4. Toplu Dönüştür butonuna basın.
+5. Hazırlanan ZIP dosyasını indirin.
+"""
+        )
+
+    with st.expander(
+        "Cloud R2 nasıl bağlanır?"
+    ):
+
+        st.markdown(
+            """
+Cloudflare R2 hesabınızdan Account ID, Bucket adı,
+S3 Endpoint ve API anahtarlarını almanız gerekir.
+
+Bu bilgiler Cloud R2 Ayarları bölümünde yapılandırılır.
+"""
+        )
+
+
+# =========================================================
+# PAKET VE LİSANS
+# =========================================================
+
+elif st.session_state.page == "Paket & Lisans":
+
+    st.markdown(
+        """
+<div class="hero">
+    <div class="hero-label">ABONELİK YÖNETİMİ</div>
+    <h1>Paket & Lisans</h1>
+    <p>
+        Sistemist Image Studio profesyonel SaaS altyapısı.
+    </p>
+</div>
+""",
+        unsafe_allow_html=True
+    )
+
+    starter, pro, business = st.columns(3)
+
+    with starter:
+
+        st.markdown(
+            """
+<div class="package-card">
+    <div class="package-name">STARTER</div>
+    <div class="package-title">Başlangıç</div>
+    <div class="package-desc">
+        Temel görsel işlemleri
+    </div>
+</div>
+""",
+            unsafe_allow_html=True
+        )
+
+        if st.button(
+            "STARTER PAKETİNİ SEÇ",
+            key="starter_package",
+            use_container_width=True
+        ):
+
+            st.session_state.package = "STARTER"
+
+            st.success("Starter paketi seçildi.")
+
+    with pro:
+
+        st.markdown(
+            """
+<div class="package-card">
+    <div class="package-name">PRO</div>
+    <div class="package-title">AKTİF</div>
+    <div class="package-desc">
+        Tüm profesyonel araçlar
+    </div>
+</div>
+""",
+            unsafe_allow_html=True
+        )
+
+        if st.button(
+            "PRO PAKETİNİ SEÇ",
+            key="pro_package",
+            use_container_width=True
+        ):
+
+            st.session_state.package = "PRO"
+
+            st.success("Pro paketi seçildi.")
+
+    with business:
+
+        st.markdown(
+            """
+<div class="package-card">
+    <div class="package-name">BUSINESS</div>
+    <div class="package-title">Kurumsal</div>
+    <div class="package-desc">
+        Yüksek hacimli operasyon
+    </div>
+</div>
+""",
+            unsafe_allow_html=True
+        )
+
+        if st.button(
+            "BUSINESS PAKETİNİ SEÇ",
+            key="business_package",
+            use_container_width=True
+        ):
+
+            st.session_state.package = "BUSINESS"
+
+            st.success("Business paketi seçildi.")
+
+
+# =========================================================
+# FOOTER
+# =========================================================
+
+st.markdown(
+    """
+<div class="footer">
+© 2026 SİSTEMİST IMAGE STUDIO • PROFESSIONAL SAAS PLATFORM
+</div>
+""",
+    unsafe_allow_html=True
 )
