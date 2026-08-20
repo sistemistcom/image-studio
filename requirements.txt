@@ -1,6 +1,1 @@
-streamlit
-requests
-boto3
-botocore
-openpyxl
-Pillow
+streamlit==1.48.1
