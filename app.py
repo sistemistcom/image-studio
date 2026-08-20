@@ -1,9 +1,12 @@
 import os
 import re
-import unicodedata
 import io
+import json
+import time
 import zipfile
 import mimetypes
+import unicodedata
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -17,176 +20,106 @@ from PIL import Image, ImageOps
 
 
 # =========================================================
-# STREAMLIT / RENDER AYARLARI
+# SİSTEMİST IMAGE STUDIO WEB
+# PROFESSIONAL SAAS EDITION
 # =========================================================
 
-os.environ["STREAMLIT_SERVER_ENABLE_CORS"] = "false"
-os.environ["STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION"] = "false"
 
-
-# =========================================================
-# SAYFA AYARLARI
-# =========================================================
+# ---------------------------------------------------------
+# SAYFA
+# ---------------------------------------------------------
 
 st.set_page_config(
     page_title="Sistemist Image Studio",
-    page_icon="▣",
+    page_icon="◈",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 
-# =========================================================
-# TASARIM
-# =========================================================
+# ---------------------------------------------------------
+# DOSYA YOLLARI
+# ---------------------------------------------------------
 
-st.markdown("""
-<style>
+BASE_DIR = Path(__file__).parent
+LOGO_PATH = BASE_DIR / "sistemist-logo-sidebar(3).png"
 
-.stApp {
-    background-color: #0d1117 !important;
-    color: #f0f6fc !important;
+
+# ---------------------------------------------------------
+# SESSION STATE
+# ---------------------------------------------------------
+
+DEFAULT_STATE = {
+    "page": "dashboard",
+    "history": [],
+    "settings": {
+        "default_format": "JPG",
+        "default_size": "1200 × 1200",
+        "quality": 90,
+        "auto_filename": True,
+    },
+    "r2_settings": {
+        "endpoint": "",
+        "access_key": "",
+        "secret_key": "",
+        "bucket": "sistemist-image-studio",
+        "public_url": "",
+    },
+    "user_name": "Sistemist Kullanıcı",
+    "plan": "PRO",
+    "url_zip": None,
+    "url_zip_name": None,
+    "url_result": None,
+    "batch_zip": None,
+    "batch_zip_name": None,
+    "r2_excel": None,
+    "r2_excel_name": None,
 }
 
-[data-testid="stSidebar"] {
-    background-color: #161b22 !important;
-    border-right: 1px solid #30363d !important;
-}
-
-[data-testid="stSidebar"] h1 {
-    color: #ff6a00 !important;
-    font-size: 24px !important;
-    font-weight: 800 !important;
-}
-
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
-    background-color: #21262d !important;
-    color: #f0f6fc !important;
-    padding: 11px 16px !important;
-    border-radius: 8px !important;
-    border: 1px solid #30363d !important;
-    margin-bottom: 8px !important;
-    width: 100% !important;
-    cursor: pointer !important;
-    transition: all 0.2s ease !important;
-}
-
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:hover {
-    background-color: #30363d !important;
-    border-color: #ff6a00 !important;
-}
-
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label div[data-testid="stMarkdownContainer"] {
-    color: #f0f6fc !important;
-    font-weight: 600 !important;
-}
-
-h1, h2, h3 {
-    color: #ffffff !important;
-    font-family: Arial, sans-serif !important;
-    font-weight: 700 !important;
-}
-
-p, span, label {
-    color: #c9d1d9 !important;
-}
-
-.stButton > button {
-    background-color: #ff6a00 !important;
-    color: #ffffff !important;
-    border-radius: 8px !important;
-    font-weight: 700 !important;
-    border: none !important;
-    padding: 12px 24px !important;
-    width: 100% !important;
-    box-shadow: 0 4px 12px rgba(255,106,0,0.25) !important;
-    transition: all 0.2s ease !important;
-}
-
-.stButton > button:hover {
-    background-color: #e05d00 !important;
-    transform: translateY(-1px) !important;
-}
-
-.saas-card {
-    background-color: #161b22 !important;
-    border: 1px solid #30363d !important;
-    border-radius: 14px !important;
-    padding: 25px !important;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.30) !important;
-    margin-bottom: 20px !important;
-    min-height: 190px !important;
-}
-
-.saas-card h3 {
-    color: #ff6a00 !important;
-    margin-top: 0 !important;
-}
-
-.saas-card p {
-    color: #8b949e !important;
-    line-height: 1.7 !important;
-}
-
-[data-testid="stFileUploader"] {
-    background-color: #161b22 !important;
-    border: 1px solid #30363d !important;
-    border-radius: 10px !important;
-    padding: 10px !important;
-}
-
-.stDownloadButton > button {
-    background-color: #238636 !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 8px !important;
-    font-weight: 700 !important;
-    width: 100% !important;
-    padding: 12px 24px !important;
-}
-
-</style>
-""", unsafe_allow_html=True)
+for key, value in DEFAULT_STATE.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
 
 
 # =========================================================
 # YARDIMCI FONKSİYONLAR
 # =========================================================
 
-def clean_filename(value):
-    """
-    Dosya adlarını Windows ve web için güvenli hale getirir.
-    Türkçe karakterleri sadeleştirir.
-    """
+def set_page(page):
+    st.session_state.page = page
+    st.rerun()
 
+
+def add_history(operation, source, success=0, failed=0, result=""):
+    st.session_state.history.append({
+        "operation": operation,
+        "source": source,
+        "date": datetime.now().strftime("%d.%m.%Y %H:%M"),
+        "success": success,
+        "failed": failed,
+        "result": result
+    })
+
+
+def clean_filename(value):
     s = str(value or "urun").strip()
 
     replacements = {
-        "ç": "c",
-        "Ç": "C",
-        "ğ": "g",
-        "Ğ": "G",
-        "ı": "i",
-        "İ": "I",
-        "ö": "o",
-        "Ö": "O",
-        "ş": "s",
-        "Ş": "S",
-        "ü": "u",
-        "Ü": "U"
+        "ç": "c", "Ç": "C",
+        "ğ": "g", "Ğ": "G",
+        "ı": "i", "İ": "I",
+        "ö": "o", "Ö": "O",
+        "ş": "s", "Ş": "S",
+        "ü": "u", "Ü": "U",
     }
 
     for old, new in replacements.items():
         s = s.replace(old, new)
 
     s = unicodedata.normalize("NFKD", s)
+    s = "".join(c for c in s if not unicodedata.combining(c))
 
-    s = "".join(
-        c for c in s
-        if not unicodedata.combining(c)
-    )
-
-    s = re.sub(r'[<>:"/\\\\|?*]', "-", s)
+    s = re.sub(r'[<>:"/\\|?*]', "-", s)
     s = re.sub(r"\s+", "-", s)
     s = re.sub(r"-+", "-", s)
 
@@ -196,10 +129,6 @@ def clean_filename(value):
 
 
 def is_url(value):
-    """
-    Değerin geçerli HTTP / HTTPS URL olup olmadığını kontrol eder.
-    """
-
     return (
         isinstance(value, str)
         and value.strip().lower().startswith(
@@ -208,12 +137,7 @@ def is_url(value):
     )
 
 
-def read_image_excel(file_bytes):
-    """
-    Excel dosyasını okur.
-    RESIM, RESIM1, RESIM2 gibi sütunları otomatik bulur.
-    """
-
+def read_excel(file_bytes):
     wb = load_workbook(
         io.BytesIO(file_bytes),
         read_only=True,
@@ -221,74 +145,71 @@ def read_image_excel(file_bytes):
     )
 
     ws = wb.active
-
     rows = ws.iter_rows(values_only=True)
 
     try:
         first_row = next(rows)
-
     except StopIteration:
         wb.close()
         raise RuntimeError("Excel dosyası boş.")
 
     headers = [
-        str(value).strip()
-        if value is not None
-        else ""
-        for value in first_row
+        str(x).strip() if x is not None else ""
+        for x in first_row
     ]
 
     data = []
 
     for row in rows:
+        item = {}
 
-        row_data = {}
+        for i, header in enumerate(headers):
+            if header:
+                item[header] = (
+                    row[i] if i < len(row) else None
+                )
 
-        for index, header in enumerate(headers):
-
-            if not header:
-                continue
-
-            value = (
-                row[index]
-                if index < len(row)
-                else None
-            )
-
-            row_data[header] = value
-
-        data.append(row_data)
+        data.append(item)
 
     wb.close()
 
     image_columns = []
 
+    image_keywords = [
+        "RESIM",
+        "RESİM",
+        "IMAGE",
+        "GÖRSEL",
+        "GORSEL",
+        "FOTO"
+    ]
+
     for header in headers:
+        normalized = header.upper()
 
-        normalized = (
-            header
-            .upper()
-            .replace("İ", "I")
-        )
-
-        if normalized.startswith("RESIM"):
+        if any(
+            normalized.startswith(keyword)
+            for keyword in image_keywords
+        ):
             image_columns.append(header)
 
     image_columns.sort(
-        key=lambda x:
-        int(re.search(r"\d+", x).group())
-        if re.search(r"\d+", x)
-        else 9999
+        key=lambda x: (
+            int(re.search(r"\d+", x).group())
+            if re.search(r"\d+", x)
+            else 9999
+        )
     )
 
     return headers, data, image_columns
 
 
-def prepare_image(image, target_size, fit_mode):
-    """
-    Görseli seçilen boyuta göre işler.
-    """
-
+def prepare_image(
+    image,
+    target_size=None,
+    fit_mode="Sığdır",
+    background="white"
+):
     try:
         image.seek(0)
     except Exception:
@@ -302,305 +223,1224 @@ def prepare_image(image, target_size, fit_mode):
     if target_size is None:
         return image.copy()
 
-    target_width, target_height = target_size
+    tw, th = target_size
 
-    if fit_mode == "Kırp (alanı tamamen doldur)":
+    if fit_mode == "Kırp":
 
         return ImageOps.fit(
             image,
-            (target_width, target_height),
+            (tw, th),
             method=Image.Resampling.LANCZOS,
             centering=(0.5, 0.5)
         )
 
-    image_copy = image.copy()
+    img = image.copy()
 
-    image_copy.thumbnail(
-        (target_width, target_height),
+    img.thumbnail(
+        (tw, th),
         Image.Resampling.LANCZOS
     )
 
     if (
-        image_copy.mode in ("RGBA", "LA")
-        or "transparency" in image_copy.info
+        img.mode in ("RGBA", "LA")
+        or "transparency" in img.info
     ):
+        rgba = img.convert("RGBA")
 
-        rgba = image_copy.convert("RGBA")
-
-        background = Image.new(
+        flat = Image.new(
             "RGB",
             rgba.size,
-            "white"
+            background
         )
 
-        background.paste(
+        flat.paste(
             rgba,
             mask=rgba.getchannel("A")
         )
 
-        image_copy = background
+        img = flat
 
-    elif image_copy.mode not in ("RGB", "L"):
-
-        image_copy = image_copy.convert("RGB")
+    elif img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
 
     canvas = Image.new(
         "RGB",
-        (target_width, target_height),
-        "white"
+        (tw, th),
+        background
     )
 
-    x = (target_width - image_copy.width) // 2
-    y = (target_height - image_copy.height) // 2
+    x = (tw - img.width) // 2
+    y = (th - img.height) // 2
 
     canvas.paste(
-        image_copy.convert("RGB"),
+        img.convert("RGB"),
         (x, y)
     )
 
     return canvas
 
 
-def get_output_settings(output_format, image_original):
-    """
-    Kullanıcının seçtiği formata göre
-    dosya uzantısını ve PIL formatını döndürür.
-    """
+def format_settings(output_format, original_format=None):
 
-    if output_format == "Orijinal formatı koru":
+    mapping = {
+        "JPG": (".jpg", "JPEG"),
+        "PNG": (".png", "PNG"),
+        "WEBP": (".webp", "WEBP"),
+        "AVIF": (".avif", "AVIF"),
+    }
 
-        original_format = (
-            image_original.format
-            or "JPEG"
+    if output_format == "Orijinal":
+
+        original = (
+            original_format or "JPEG"
         ).upper()
 
-        extension_map = {
+        ext_map = {
             "JPEG": ".jpg",
             "JPG": ".jpg",
             "PNG": ".png",
             "WEBP": ".webp",
+            "AVIF": ".avif",
             "GIF": ".gif",
-            "AVIF": ".avif"
         }
 
-        extension = extension_map.get(
-            original_format,
-            ".jpg"
+        return (
+            ext_map.get(original, ".jpg"),
+            original
         )
 
-        return extension, original_format
+    return mapping[output_format]
 
-    format_map = {
-        "JPG": (".jpg", "JPEG"),
-        "PNG": (".png", "PNG"),
-        "WEBP": (".webp", "WEBP"),
-        "AVIF": (".avif", "AVIF")
+
+def save_processed_image(
+    image,
+    output_format,
+    quality=90,
+    original_format=None
+):
+    extension, pil_format = format_settings(
+        output_format,
+        original_format
+    )
+
+    buffer = io.BytesIO()
+
+    if pil_format in ("JPEG", "JPG"):
+        if image.mode not in ("RGB", "L"):
+            image = image.convert("RGB")
+
+    save_kwargs = {}
+
+    if pil_format in (
+        "JPEG",
+        "JPG",
+        "WEBP",
+        "AVIF"
+    ):
+        save_kwargs["quality"] = quality
+
+    image.save(
+        buffer,
+        format=pil_format,
+        **save_kwargs
+    )
+
+    buffer.seek(0)
+
+    return buffer, extension
+
+
+def get_r2_client():
+
+    settings = st.session_state.r2_settings
+
+    if not all([
+        settings.get("endpoint"),
+        settings.get("access_key"),
+        settings.get("secret_key"),
+        settings.get("bucket"),
+    ]):
+        raise RuntimeError(
+            "Cloudflare R2 ayarları eksik."
+        )
+
+    return boto3.client(
+        "s3",
+        endpoint_url=settings["endpoint"].rstrip("/"),
+        aws_access_key_id=settings["access_key"],
+        aws_secret_access_key=settings["secret_key"],
+        region_name="auto",
+        config=Config(
+            signature_version="s3v4"
+        )
+    )
+
+
+def create_excel_report(rows, headers):
+
+    wb = Workbook()
+    ws = wb.active
+
+    ws.title = "Sistemist Report"
+
+    ws.append(headers)
+
+    for row in rows:
+        ws.append(row)
+
+    for column in ws.columns:
+
+        max_length = 0
+        column_letter = column[0].column_letter
+
+        for cell in column:
+            try:
+                length = len(str(cell.value))
+                max_length = max(
+                    max_length,
+                    length
+                )
+            except Exception:
+                pass
+
+        ws.column_dimensions[
+            column_letter
+        ].width = min(max_length + 3, 70)
+
+    for cell in ws[1]:
+        cell.font = cell.font.copy(bold=True)
+
+    buffer = io.BytesIO()
+
+    wb.save(buffer)
+    buffer.seek(0)
+
+    return buffer
+
+
+# =========================================================
+# TASARIM
+# =========================================================
+
+st.markdown("""
+<style>
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+/* ROOT */
+
+html,
+body,
+[data-testid="stAppViewContainer"],
+[data-testid="stApp"] {
+    background: #0b1018 !important;
+    color: #f4f7fb !important;
+    font-family: 'Inter', sans-serif !important;
+}
+
+.stApp {
+    background:
+        radial-gradient(
+            circle at 75% 0%,
+            rgba(255,106,0,0.07),
+            transparent 28%
+        ),
+        #0b1018 !important;
+}
+
+#MainMenu,
+footer,
+header {
+    visibility: hidden !important;
+}
+
+.block-container {
+    padding-top: 1.6rem !important;
+    padding-left: 2.2rem !important;
+    padding-right: 2.2rem !important;
+    padding-bottom: 2rem !important;
+    max-width: 1600px !important;
+}
+
+/* SIDEBAR */
+
+[data-testid="stSidebar"] {
+    background:
+        linear-gradient(
+            180deg,
+            #111822 0%,
+            #0c121a 100%
+        ) !important;
+    border-right: 1px solid #202a36 !important;
+    width: 285px !important;
+}
+
+[data-testid="stSidebar"] > div:first-child {
+    padding: 0 !important;
+}
+
+/* SIDEBAR LOGO */
+
+.logo-box {
+    padding: 22px 20px 20px 20px;
+    border-bottom: 1px solid #202a36;
+    margin-bottom: 14px;
+}
+
+.logo-caption {
+    color: #7e8998;
+    font-size: 10px;
+    letter-spacing: 1.3px;
+    font-weight: 700;
+    margin-top: 8px;
+}
+
+/* SIDEBAR */
+
+.sidebar-section {
+    color: #667486;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1.4px;
+    padding: 12px 20px 7px 20px;
+}
+
+/* BUTTONS */
+
+[data-testid="stSidebar"] .stButton {
+    padding: 0 12px !important;
+}
+
+[data-testid="stSidebar"] .stButton button {
+    width: 100% !important;
+    text-align: left !important;
+    justify-content: flex-start !important;
+    background: transparent !important;
+    border: 1px solid transparent !important;
+    color: #aeb8c6 !important;
+    min-height: 45px !important;
+    border-radius: 10px !important;
+    padding: 0 14px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    transition: all .2s ease !important;
+    box-shadow: none !important;
+}
+
+[data-testid="stSidebar"] .stButton button:hover {
+    background: #19222d !important;
+    border-color: #293646 !important;
+    color: #ffffff !important;
+    transform: none !important;
+}
+
+[data-testid="stSidebar"] .stButton button[kind="secondary"] {
+    background: transparent !important;
+}
+
+/* HEADINGS */
+
+h1,
+h2,
+h3 {
+    font-family: 'Space Grotesk', sans-serif !important;
+    color: #f6f8fb !important;
+}
+
+h1 {
+    font-size: 32px !important;
+    font-weight: 700 !important;
+    letter-spacing: -1px !important;
+}
+
+h2 {
+    font-size: 22px !important;
+}
+
+h3 {
+    font-size: 16px !important;
+}
+
+/* TOP BAR */
+
+.topbar {
+    height: 70px;
+    background: rgba(17,24,34,.76);
+    border: 1px solid #202a36;
+    border-radius: 15px;
+    padding: 0 22px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 28px;
+    backdrop-filter: blur(12px);
+}
+
+.breadcrumb {
+    color: #7e8998;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+}
+
+.breadcrumb strong {
+    color: #ffffff;
+}
+
+.top-right {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+}
+
+.pro-badge {
+    color: #ff8a36;
+    background: rgba(255,106,0,.09);
+    border: 1px solid rgba(255,106,0,.25);
+    border-radius: 20px;
+    padding: 7px 13px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .8px;
+}
+
+.system-ready {
+    color: #8bd7a4;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+/* HERO */
+
+.hero {
+    margin-bottom: 24px;
+}
+
+.hero-kicker {
+    color: #ff6a00;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1.8px;
+    margin-bottom: 8px;
+}
+
+.hero-subtitle {
+    color: #8491a1;
+    font-size: 14px;
+    max-width: 720px;
+    line-height: 1.7;
+}
+
+/* STAT CARDS */
+
+.stat-card {
+    background:
+        linear-gradient(
+            145deg,
+            rgba(26,35,47,.96),
+            rgba(15,22,31,.98)
+        );
+    border: 1px solid #273342;
+    border-radius: 15px;
+    padding: 18px;
+    min-height: 126px;
+    position: relative;
+    overflow: hidden;
+}
+
+.stat-card:before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: #ff6a00;
+}
+
+.stat-icon {
+    color: #ff6a00;
+    font-size: 20px;
+    margin-bottom: 14px;
+}
+
+.stat-title {
+    color: #748195;
+    font-size: 10px;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.stat-value {
+    color: #f7f9fc;
+    font-family: 'Space Grotesk';
+    font-size: 23px;
+    font-weight: 700;
+}
+
+.stat-sub {
+    color: #667486;
+    font-size: 10px;
+    margin-top: 5px;
+}
+
+/* TOOL CARD */
+
+.tool-card {
+    background:
+        linear-gradient(
+            145deg,
+            #151e29,
+            #101720
+        );
+    border: 1px solid #283545;
+    border-radius: 17px;
+    padding: 24px;
+    min-height: 245px;
+    position: relative;
+    overflow: hidden;
+}
+
+.tool-card:after {
+    content: "";
+    position: absolute;
+    width: 170px;
+    height: 170px;
+    right: -80px;
+    top: -80px;
+    background: rgba(255,106,0,.045);
+    border-radius: 50%;
+}
+
+.tool-icon {
+    width: 47px;
+    height: 47px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,106,0,.09);
+    border: 1px solid rgba(255,106,0,.2);
+    border-radius: 13px;
+    color: #ff7a1c;
+    font-size: 20px;
+    margin-bottom: 18px;
+}
+
+.tool-title {
+    color: #f5f7fb;
+    font-family: 'Space Grotesk';
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.tool-description {
+    color: #7d8998;
+    font-size: 12px;
+    line-height: 1.7;
+    margin-top: 9px;
+}
+
+/* PANEL */
+
+.panel {
+    background: #121a24;
+    border: 1px solid #253140;
+    border-radius: 17px;
+    padding: 22px;
+    margin-bottom: 18px;
+}
+
+.panel-title {
+    color: #f6f8fb;
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+
+.panel-subtitle {
+    color: #748195;
+    font-size: 11px;
+    margin-bottom: 20px;
+}
+
+/* PRIMARY BUTTON */
+
+.stButton > button {
+    background: linear-gradient(
+        135deg,
+        #ff7a18,
+        #f45100
+    ) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 10px !important;
+    font-family: 'Inter' !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    min-height: 43px !important;
+    padding: 0 18px !important;
+    transition: all .2s ease !important;
+    box-shadow:
+        0 8px 20px
+        rgba(255,91,0,.16) !important;
+}
+
+.stButton > button:hover {
+    transform: translateY(-1px) !important;
+    box-shadow:
+        0 12px 25px
+        rgba(255,91,0,.24) !important;
+}
+
+/* INPUTS */
+
+.stTextInput input,
+.stNumberInput input,
+.stSelectbox div[data-baseweb="select"] > div,
+.stTextArea textarea {
+    background: #0d141d !important;
+    color: #eaf0f7 !important;
+    border-color: #2b3746 !important;
+    border-radius: 10px !important;
+}
+
+.stTextInput label,
+.stSelectbox label,
+.stNumberInput label,
+.stFileUploader label {
+    color: #91a0b1 !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+}
+
+[data-testid="stFileUploader"] {
+    background: #0e151e !important;
+    border: 1px dashed #344354 !important;
+    border-radius: 14px !important;
+    padding: 10px !important;
+}
+
+[data-testid="stFileUploaderDropzone"] {
+    background: transparent !important;
+    border: none !important;
+}
+
+/* EXPANDER */
+
+[data-testid="stExpander"] {
+    background: #101720 !important;
+    border: 1px solid #293545 !important;
+    border-radius: 13px !important;
+}
+
+/* TABLE */
+
+[data-testid="stDataFrame"] {
+    border: 1px solid #293545 !important;
+    border-radius: 13px !important;
+    overflow: hidden !important;
+}
+
+/* SUCCESS / INFO */
+
+[data-testid="stAlert"] {
+    border-radius: 11px !important;
+}
+
+/* DIVIDER */
+
+hr {
+    border-color: #202a36 !important;
+}
+
+/* MOBILE */
+
+@media (max-width: 900px) {
+    .block-container {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
     }
 
-    return format_map[output_format]
+    .topbar {
+        padding: 0 14px;
+    }
+}
+
+</style>
+""", unsafe_allow_html=True)
 
 
 # =========================================================
 # SIDEBAR
 # =========================================================
 
-st.sidebar.title("SİSTEMİST")
+with st.sidebar:
 
-st.sidebar.caption(
-    "IMAGE STUDIO WEB • V1.0"
-)
-
-st.sidebar.markdown("---")
-
-menu = st.sidebar.radio(
-    "Uygulama Menüsü",
-    [
-        "🏠 Ana Sayfa",
-        "📥 URL → Görsel",
-        "📤 Görsel → URL"
-    ]
-)
-
-st.sidebar.markdown("---")
-
-st.sidebar.caption(
-    "© Sistemist Image Studio"
-)
-
-
-# =========================================================
-# ANA SAYFA
-# =========================================================
-
-if menu == "🏠 Ana Sayfa":
-
-    st.title("Sistemist Image Studio")
-
-    st.write(
-        "E-ticaret görsel operasyonlarınızı "
-        "tek panel üzerinden yönetin."
+    st.markdown(
+        '<div class="logo-box">',
+        unsafe_allow_html=True
     )
 
-    st.markdown("---")
+    if LOGO_PATH.exists():
+        st.image(
+            str(LOGO_PATH),
+            use_container_width=True
+        )
+    else:
+        st.markdown(
+            """
+            <div style="
+                color:#ff6a00;
+                font-size:27px;
+                font-weight:800;
+                letter-spacing:2px;
+            ">
+                SİSTEMİST
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        st.markdown("""
-        <div class="saas-card">
-
-            <h3>📥 URL → Görsel</h3>
-
-            <p>
-            Excel dosyanızdaki ürün görsel linklerini
-            toplu olarak indirin.
-            </p>
-
-            <p>
-            JPG, PNG, WEBP veya AVIF formatına dönüştürün,
-            görselleri otomatik boyutlandırın ve ZIP olarak alın.
-            </p>
-
+    st.markdown(
+        """
+        <div class="logo-caption">
+            IMAGE STUDIO WEB • V7.7 PRO
         </div>
-        """, unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True
+    )
 
-    with col2:
+    st.markdown("</div>", unsafe_allow_html=True)
 
-        st.markdown("""
-        <div class="saas-card">
+    st.markdown(
+        '<div class="sidebar-section">ANA MENÜ</div>',
+        unsafe_allow_html=True
+    )
 
-            <h3>📤 Görsel → URL</h3>
+    nav_items = [
+        ("dashboard", "⌂   Dashboard"),
+        ("url_image", "↙   URL → Görsel"),
+        ("image_url", "↗   Görsel → URL"),
+        ("batch", "◈   Toplu Dönüştürme"),
+        ("history", "◷   İşlem Geçmişi"),
+    ]
 
-            <p>
-            Bilgisayarınızdaki görselleri
-            Cloudflare R2 bulut depolamasına yükleyin.
-            </p>
+    for page_id, label in nav_items:
+        if st.button(
+            label,
+            key=f"nav_{page_id}"
+        ):
+            set_page(page_id)
 
-            <p>
-            İşlem sonunda tüm görsel linklerini
-            içeren Excel raporunu otomatik oluşturun.
-            </p>
+    st.markdown(
+        '<div class="sidebar-section">SİSTEM</div>',
+        unsafe_allow_html=True
+    )
 
+    system_items = [
+        ("cloud", "☁   Cloud Dosyaları"),
+        ("r2", "⚙   Cloud R2 Ayarları"),
+        ("settings", "◉   Genel Ayarlar"),
+    ]
+
+    for page_id, label in system_items:
+        if st.button(
+            label,
+            key=f"nav_{page_id}"
+        ):
+            set_page(page_id)
+
+    st.markdown(
+        '<div class="sidebar-section">DESTEK</div>',
+        unsafe_allow_html=True
+    )
+
+    support_items = [
+        ("help", "?   Yardım Merkezi"),
+        ("license", "◆   Paket & Lisans"),
+    ]
+
+    for page_id, label in support_items:
+        if st.button(
+            label,
+            key=f"nav_{page_id}"
+        ):
+            set_page(page_id)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    st.markdown(
+        """
+        <div style="
+            margin:10px 18px;
+            padding:14px;
+            background:#101720;
+            border:1px solid #202c3a;
+            border-radius:12px;
+        ">
+            <div style="
+                color:#657387;
+                font-size:9px;
+                font-weight:700;
+                letter-spacing:1px;
+            ">
+                SİSTEM DURUMU
+            </div>
+
+            <div style="
+                color:#8bd7a4;
+                font-size:11px;
+                font-weight:700;
+                margin-top:7px;
+            ">
+                ● TÜM SİSTEMLER HAZIR
+            </div>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True
+    )
 
-    st.markdown("### Sistemist ile neler yapabilirsiniz?")
 
-    feature1, feature2, feature3 = st.columns(3)
+# =========================================================
+# TOPBAR
+# =========================================================
 
-    with feature1:
-        st.info("⚡ Toplu Görsel İşleme")
+current_page_names = {
+    "dashboard": "DASHBOARD",
+    "url_image": "URL → GÖRSEL",
+    "image_url": "GÖRSEL → URL",
+    "batch": "TOPLU DÖNÜŞTÜRME",
+    "history": "İŞLEM GEÇMİŞİ",
+    "cloud": "CLOUD DOSYALARI",
+    "r2": "CLOUD R2 AYARLARI",
+    "settings": "GENEL AYARLAR",
+    "help": "YARDIM MERKEZİ",
+    "license": "PAKET & LİSANS",
+}
 
-    with feature2:
-        st.info("📊 Excel Entegrasyonu")
+current_name = current_page_names.get(
+    st.session_state.page,
+    "DASHBOARD"
+)
 
-    with feature3:
-        st.info("☁ Bulut Depolama")
+st.markdown(
+    f"""
+    <div class="topbar">
+
+        <div class="breadcrumb">
+            SİSTEMİST
+            <span style="color:#3c4755;padding:0 8px;">/</span>
+            <strong>{current_name}</strong>
+        </div>
+
+        <div class="top-right">
+            <div class="pro-badge">
+                ◆ {st.session_state.plan} KULLANICI
+            </div>
+
+            <div class="system-ready">
+                ● Sistem Hazır
+            </div>
+        </div>
+
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+
+# =========================================================
+# DASHBOARD
+# =========================================================
+
+if st.session_state.page == "dashboard":
+
+    total_jobs = len(st.session_state.history)
+
+    total_success = sum(
+        item["success"]
+        for item in st.session_state.history
+    )
+
+    total_failed = sum(
+        item["failed"]
+        for item in st.session_state.history
+    )
+
+    total_files = total_success + total_failed
+
+    success_rate = (
+        round((total_success / total_files) * 100)
+        if total_files > 0
+        else 100
+    )
+
+    r2_connected = bool(
+        st.session_state.r2_settings.get("endpoint")
+    )
+
+    st.markdown(
+        """
+        <div class="hero">
+            <div class="hero-kicker">
+                SİSTEMİST IMAGE STUDIO
+            </div>
+
+            <h1>Görsel operasyonlarınız kontrol altında.</h1>
+
+            <div class="hero-subtitle">
+                E-ticaret görsellerinizi indirin, dönüştürün,
+                yeniden boyutlandırın ve buluta yükleyin.
+                Tüm operasyonlarınızı tek bir profesyonel
+                çalışma alanından yönetin.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+
+    cards = [
+        (
+            "✓",
+            "TOPLAM İŞLEM",
+            str(total_jobs),
+            f"{total_files} dosya işlendi"
+        ),
+        (
+            "☁",
+            "CLOUD R2",
+            "BAĞLI" if r2_connected else "AYARLA",
+            "Cloudflare depolama"
+        ),
+        (
+            "↗",
+            "BAŞARI ORANI",
+            f"%{success_rate}",
+            f"{total_success} başarılı"
+        ),
+        (
+            "◆",
+            "AKTİF PAKET",
+            st.session_state.plan,
+            "Image Studio üyeliği"
+        ),
+        (
+            "●",
+            "SİSTEM DURUMU",
+            "HAZIR",
+            "Tüm servisler aktif"
+        ),
+    ]
+
+    columns = [c1, c2, c3, c4, c5]
+
+    for col, card in zip(columns, cards):
+
+        icon, title, value, sub = card
+
+        with col:
+            st.markdown(
+                f"""
+                <div class="stat-card">
+                    <div class="stat-icon">{icon}</div>
+                    <div class="stat-title">{title}</div>
+                    <div class="stat-value">{value}</div>
+                    <div class="stat-sub">{sub}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    left, right = st.columns(2)
+
+    with left:
+
+        st.markdown(
+            """
+            <div class="tool-card">
+                <div class="tool-icon">↙</div>
+                <div class="tool-title">
+                    URL → Görsel Motoru
+                </div>
+                <div class="tool-description">
+                    Excel dosyanızdaki ürün görsel bağlantılarını
+                    toplu olarak indirin. JPG, PNG, WEBP veya AVIF
+                    formatına dönüştürün ve profesyonel ölçülerde
+                    yeniden hazırlayın.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        if st.button(
+            "URL → GÖRSEL MOTORUNU AÇ",
+            key="dash_url"
+        ):
+            set_page("url_image")
+
+    with right:
+
+        st.markdown(
+            """
+            <div class="tool-card">
+                <div class="tool-icon">↗</div>
+                <div class="tool-title">
+                    Görsel → URL Motoru
+                </div>
+                <div class="tool-description">
+                    Bilgisayarınızdaki görselleri doğrudan
+                    Cloudflare R2 bulut depolamaya yükleyin.
+                    Oluşturulan paylaşılabilir URL'leri otomatik
+                    olarak Excel raporuna dönüştürün.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        if st.button(
+            "GÖRSEL → URL MOTORUNU AÇ",
+            key="dash_r2"
+        ):
+            set_page("image_url")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    st.markdown(
+        """
+        <div class="panel">
+            <div class="panel-title">
+                Son İşlemler
+            </div>
+
+            <div class="panel-subtitle">
+                Sistem üzerinde gerçekleştirilen son operasyonlar.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    if st.session_state.history:
+
+        display_rows = list(
+            reversed(st.session_state.history[-10:])
+        )
+
+        table_rows = []
+
+        for item in display_rows:
+
+            status = (
+                "Başarılı"
+                if item["failed"] == 0
+                else "Kısmi / Hata"
+            )
+
+            table_rows.append({
+                "İŞLEM TÜRÜ": item["operation"],
+                "DOSYA / KAYNAK": item["source"],
+                "TARİH": item["date"],
+                "DURUM": status,
+                "SONUÇ": item["result"],
+            })
+
+        st.dataframe(
+            table_rows,
+            use_container_width=True,
+            hide_index=True
+        )
+
+    else:
+
+        st.info(
+            "Henüz işlem geçmişi bulunmuyor. "
+            "URL → Görsel veya Görsel → URL aracını kullanarak başlayabilirsiniz."
+        )
 
 
 # =========================================================
 # URL → GÖRSEL
 # =========================================================
 
-elif menu == "📥 URL → Görsel":
+elif st.session_state.page == "url_image":
 
-    st.title("📥 URL → Görsel İşleme Merkezi")
+    st.markdown(
+        """
+        <div class="hero">
+            <div class="hero-kicker">
+                GÖRSEL İNDİRME MOTORU
+            </div>
 
-    st.write(
-        "Excel dosyanızdaki görsel URL'lerini "
-        "toplu olarak indirip işleyin."
+            <h1>URL → Görsel</h1>
+
+            <div class="hero-subtitle">
+                Excel dosyanızdaki görsel bağlantılarını otomatik
+                olarak bulun, toplu şekilde indirin, dönüştürün
+                ve tek ZIP dosyasında alın.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
-    uploaded_file = st.file_uploader(
-        "Excel dosyasını yükleyin (.xlsx)",
-        type=["xlsx"]
+    uploaded_excel = st.file_uploader(
+        "Excel dosyanızı yükleyin",
+        type=["xlsx"],
+        key="url_excel_upload"
     )
 
-    if uploaded_file:
+    if uploaded_excel:
 
         try:
 
-            file_bytes = uploaded_file.read()
+            file_bytes = uploaded_excel.getvalue()
 
-            headers, excel_data, image_columns = (
-                read_image_excel(file_bytes)
+            headers, excel_data, image_columns = read_excel(
+                file_bytes
             )
 
             if not image_columns:
 
                 st.error(
-                    "Excel dosyasında RESIM ile başlayan "
-                    "bir sütun bulunamadı."
+                    "Excel içerisinde RESIM, GÖRSEL, IMAGE veya FOTO ile başlayan bir görsel sütunu bulunamadı."
                 )
 
             else:
 
                 st.success(
-                    f"Excel analiz edildi: "
-                    f"{len(excel_data)} ürün satırı bulundu."
+                    f"Excel başarıyla analiz edildi • "
+                    f"{len(excel_data)} satır bulundu • "
+                    f"{len(image_columns)} görsel sütunu tespit edildi"
                 )
 
-                st.info(
-                    f"Bulunan görsel sütunları: "
-                    f"{', '.join(image_columns)}"
+                st.markdown(
+                    '<div class="panel">',
+                    unsafe_allow_html=True
                 )
 
-                col1, col2, col3 = st.columns(3)
+                st.markdown(
+                    """
+                    <div class="panel-title">
+                        İşlem Ayarları
+                    </div>
+
+                    <div class="panel-subtitle">
+                        İndirme ve dönüşüm seçeneklerini belirleyin.
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
                 usable_headers = [
-                    header
-                    for header in headers
-                    if header
-                    and header not in image_columns
+                    h for h in headers
+                    if h and h not in image_columns
                 ]
 
-                with col1:
+                a, b, c = st.columns(3)
+
+                with a:
 
                     name_col = st.selectbox(
-                        "Dosya adı sütunu:",
+                        "Dosya adı sütunu",
                         usable_headers
+                        if usable_headers
+                        else headers
                     )
 
-                with col2:
+                with b:
 
                     output_format = st.selectbox(
-                        "Dönüşüm formatı:",
+                        "Çıktı formatı",
                         [
                             "JPG",
                             "PNG",
                             "WEBP",
                             "AVIF",
-                            "Orijinal formatı koru"
-                        ]
+                            "Orijinal"
+                        ],
+                        index=0
                     )
 
-                with col3:
+                with c:
 
                     size_mode = st.selectbox(
-                        "Yeniden boyutlandırma:",
+                        "Görsel ölçüsü",
                         [
-                            "1200 × 1200 px",
-                            "1200 × 1800 px",
-                            "Orijinal boyutu koru"
+                            "1200 × 1200",
+                            "1200 × 1800",
+                            "1080 × 1350",
+                            "1920 × 1080",
+                            "Özel ölçü",
+                            "Orijinal boyut"
                         ]
                     )
 
-                fit_mode = st.selectbox(
-                    "Görsel yerleşim modu:",
-                    [
-                        "Sığdır (oranı koru + beyaz zemin)",
-                        "Kırp (alanı tamamen doldur)"
-                    ]
-                )
+                d, e, f = st.columns(3)
+
+                with d:
+
+                    fit_mode = st.selectbox(
+                        "Yerleşim modu",
+                        [
+                            "Sığdır",
+                            "Kırp"
+                        ]
+                    )
+
+                with e:
+
+                    quality = st.slider(
+                        "Kalite",
+                        min_value=50,
+                        max_value=100,
+                        value=st.session_state.settings["quality"]
+                    )
+
+                with f:
+
+                    background = st.selectbox(
+                        "Arka plan",
+                        [
+                            "white",
+                            "black"
+                        ]
+                    )
+
+                custom_width = None
+                custom_height = None
+
+                if size_mode == "Özel ölçü":
+
+                    x, y = st.columns(2)
+
+                    with x:
+                        custom_width = st.number_input(
+                            "Genişlik",
+                            min_value=100,
+                            value=1200
+                        )
+
+                    with y:
+                        custom_height = st.number_input(
+                            "Yükseklik",
+                            min_value=100,
+                            value=1200
+                        )
+
+                st.markdown("</div>", unsafe_allow_html=True)
 
                 if st.button(
-                    "🚀 GÖRSELLERİ İŞLE VE ZIP OLUŞTUR"
+                    "◈ GÖRSELLERİ İŞLE VE ZIP OLUŞTUR",
+                    key="process_url_images"
                 ):
 
                     tasks = []
-
-                    image_counter = 0
 
                     for row_number, row in enumerate(
                         excel_data,
@@ -612,58 +1452,62 @@ elif menu == "📥 URL → Görsel":
                             or f"urun-{row_number}"
                         )
 
-                        product_image_number = 0
+                        image_number = 0
 
-                        for image_column in image_columns:
+                        for image_col in image_columns:
 
-                            value = row.get(image_column)
+                            value = row.get(image_col)
 
                             if is_url(value):
 
-                                product_image_number += 1
-                                image_counter += 1
+                                image_number += 1
 
                                 tasks.append({
                                     "url": value.strip(),
                                     "base": base_name,
-                                    "image_number": product_image_number,
-                                    "global_number": image_counter
+                                    "number": image_number
                                 })
 
                     if not tasks:
 
                         st.warning(
-                            "Geçerli görsel URL'si bulunamadı."
+                            "İşlenebilecek geçerli görsel URL'si bulunamadı."
                         )
 
                     else:
 
-                        st.info(
-                            f"Toplam {len(tasks)} görsel işlenecek."
-                        )
+                        size_map = {
+                            "1200 × 1200": (1200, 1200),
+                            "1200 × 1800": (1200, 1800),
+                            "1080 × 1350": (1080, 1350),
+                            "1920 × 1080": (1920, 1080),
+                        }
 
-                        zip_buffer = io.BytesIO()
+                        if size_mode == "Özel ölçü":
 
-                        progress_bar = st.progress(0)
+                            target_size = (
+                                int(custom_width),
+                                int(custom_height)
+                            )
 
-                        status_text = st.empty()
-
-                        session = requests.Session()
-
-                        if size_mode == "1200 × 1200 px":
-
-                            target_size = (1200, 1200)
-
-                        elif size_mode == "1200 × 1800 px":
-
-                            target_size = (1200, 1800)
-
-                        else:
+                        elif size_mode == "Orijinal boyut":
 
                             target_size = None
 
+                        else:
+
+                            target_size = size_map.get(size_mode)
+
+                        zip_buffer = io.BytesIO()
+
+                        progress = st.progress(0)
+
+                        status = st.empty()
+
                         success_count = 0
                         error_count = 0
+
+                        session = requests.Session()
 
                         with zipfile.ZipFile(
                             zip_buffer,
@@ -675,9 +1519,10 @@ elif menu == "📥 URL → Görsel":
 
                                 try:
 
-                                    status_text.write(
-                                        f"İşleniyor: "
-                                        f"{index + 1} / {len(tasks)}"
+                                    status.write(
+                                        f"İşleniyor • "
+                                        f"{index + 1}/{len(tasks)} • "
+                                        f"{task['base']}"
                                     )
 
                                     response = session.get(
@@ -692,156 +1537,183 @@ elif menu == "📥 URL → Görsel":
                                     response.raise_for_status()
 
                                     original_image = Image.open(
-                                        io.BytesIO(
-                                            response.content
-                                        )
+                                        io.BytesIO(response.content)
                                     )
 
-                                    extension, pil_format = (
-                                        get_output_settings(
+                                    processed = prepare_image(
+                                        original_image,
+                                        target_size,
+                                        fit_mode,
+                                        background
+                                    )
+
+                                    image_buffer, extension = (
+                                        save_processed_image(
+                                            processed,
                                             output_format,
-                                            original_image
+                                            quality,
+                                            original_image.format
                                         )
                                     )
 
-                                    processed_image = (
-                                        prepare_image(
-                                            original_image,
-                                            target_size,
-                                            fit_mode
-                                        )
-                                    )
-
-                                    image_buffer = io.BytesIO()
-
-                                    if (
-                                        pil_format in ("JPEG", "JPG")
-                                        and processed_image.mode
-                                        not in ("RGB", "L")
-                                    ):
-
-                                        processed_image = (
-                                            processed_image.convert("RGB")
-                                        )
-
-                                    save_kwargs = {}
-
-                                    if pil_format in (
-                                        "JPEG",
-                                        "JPG",
-                                        "WEBP",
-                                        "AVIF"
-                                    ):
-
-                                        save_kwargs["quality"] = 90
-
-                                    processed_image.save(
-                                        image_buffer,
-                                        format=pil_format,
-                                        **save_kwargs
-                                    )
-
-                                    output_filename = (
+                                    filename = (
                                         f"{task['base']}-"
-                                        f"{task['image_number']}"
+                                        f"{task['number']}"
                                         f"{extension}"
                                     )
 
                                     zip_file.writestr(
-                                        output_filename,
+                                        filename,
                                         image_buffer.getvalue()
                                     )
 
                                     success_count += 1
 
                                 except Exception:
-
                                     error_count += 1
 
-                                progress = (
-                                    (index + 1)
-                                    / len(tasks)
+                                progress.progress(
+                                    (index + 1) / len(tasks)
                                 )
 
-                                progress_bar.progress(progress)
+                        zip_buffer.seek(0)
 
-                        status_text.empty()
+                        status.empty()
 
-                        st.success(
-                            f"İşlem tamamlandı. "
-                            f"{success_count} görsel başarıyla işlendi."
+                        st.session_state.url_zip = (
+                            zip_buffer.getvalue()
                         )
 
-                        if error_count > 0:
+                        st.session_state.url_zip_name = (
+                            "sistemist-image-studio-gorseller.zip"
+                        )
 
-                            st.warning(
-                                f"{error_count} görsel indirilemedi "
-                                f"veya işlenemedi."
-                            )
+                        st.session_state.url_result = {
+                            "success": success_count,
+                            "failed": error_count
+                        }
 
-                        st.download_button(
-                            label="📦 ZIP DOSYASINI İNDİR",
-                            data=zip_buffer.getvalue(),
-                            file_name="sistemist_image_studio.zip",
-                            mime="application/zip"
+                        add_history(
+                            "URL → Görsel",
+                            uploaded_excel.name,
+                            success_count,
+                            error_count,
+                            "ZIP çıktısı oluşturuldu"
+                        )
+
+                        st.success(
+                            f"İşlem tamamlandı • "
+                            f"{success_count} başarılı • "
+                            f"{error_count} hatalı"
                         )
 
         except Exception as error:
 
             st.error(
-                f"Hata oluştu: {str(error)}"
+                f"Excel işlenirken hata oluştu: {error}"
             )
 
+    if st.session_state.url_zip:
+
+        st.download_button(
+            "↓ HAZIR ZIP DOSYASINI İNDİR",
+            data=st.session_state.url_zip,
+            file_name=st.session_state.url_zip_name,
+            mime="application/zip",
+            key="download_url_zip"
+        )
+
 
 # =========================================================
-# GÖRSEL → URL / CLOUDFLARE R2
+# GÖRSEL → URL
 # =========================================================
 
-elif menu == "📤 Görsel → URL":
+elif st.session_state.page == "image_url":
 
-    st.title("📤 Görsel → URL Bulut Yükleme Merkezi")
+    st.markdown(
+        """
+        <div class="hero">
+            <div class="hero-kicker">
+                BULUT DAĞITIM MOTORU
+            </div>
 
-    st.write(
-        "Görsellerinizi Cloudflare R2'ye yükleyin "
-        "ve toplu URL listesi oluşturun."
+            <h1>Görsel → URL</h1>
+
+            <div class="hero-subtitle">
+                Görsellerinizi doğrudan Cloudflare R2'ye yükleyin,
+                paylaşılabilir bağlantılar oluşturun ve sonuçları
+                Excel formatında alın.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
+    settings = st.session_state.r2_settings
+
     with st.expander(
-        "🔑 Cloudflare R2 API Ayarları",
+        "🔑 Cloudflare R2 Bağlantı Bilgileri",
         expanded=True
     ):
 
-        r2_endpoint = st.text_input(
+        endpoint = st.text_input(
             "R2 Endpoint",
-            placeholder=(
-                "https://ACCOUNT_ID."
-                "r2.cloudflarestorage.com"
+            value=settings.get("endpoint", ""),
+            placeholder="https://ACCOUNT_ID.r2.cloudflarestorage.com"
+        )
+
+        x, y = st.columns(2)
+
+        with x:
+            access_key = st.text_input(
+                "Access Key ID",
+                value=settings.get("access_key", "")
             )
-        )
 
-        r2_access_key = st.text_input(
-            "Access Key ID"
-        )
-
-        r2_secret_key = st.text_input(
-            "Secret Access Key",
-            type="password"
-        )
-
-        r2_bucket = st.text_input(
-            "Bucket Name",
-            value="sistemist-image-studio"
-        )
-
-        r2_public_url = st.text_input(
-            "CDN / Public URL",
-            placeholder=(
-                "https://images.sistemist.com"
+        with y:
+            secret_key = st.text_input(
+                "Secret Access Key",
+                value=settings.get("secret_key", ""),
+                type="password"
             )
-        )
+
+        a, b = st.columns(2)
+
+        with a:
+            bucket = st.text_input(
+                "Bucket Name",
+                value=settings.get(
+                    "bucket",
+                    "sistemist-image-studio"
+                )
+            )
+
+        with b:
+            public_url = st.text_input(
+                "CDN / Public URL",
+                value=settings.get("public_url", ""),
+                placeholder="https://images.sistemist.com"
+            )
+
+        if st.button(
+            "R2 AYARLARINI KAYDET",
+            key="save_r2_from_upload"
+        ):
+
+            st.session_state.r2_settings = {
+                "endpoint": endpoint,
+                "access_key": access_key,
+                "secret_key": secret_key,
+                "bucket": bucket,
+                "public_url": public_url
+            }
+
+            st.success(
+                "Cloudflare R2 ayarları kaydedildi."
+            )
 
     uploaded_images = st.file_uploader(
-        "Görselleri sürükleyin veya seçin",
+        "Görsellerinizi seçin",
         type=[
             "jpg",
             "jpeg",
@@ -850,222 +1722,959 @@ elif menu == "📤 Görsel → URL":
             "gif",
             "avif"
         ],
-        accept_multiple_files=True
+        accept_multiple_files=True,
+        key="r2_image_upload"
     )
 
     if uploaded_images:
 
-        st.success(
-            f"{len(uploaded_images)} görsel seçildi."
+        st.info(
+            f"{len(uploaded_images)} görsel yüklemeye hazır."
         )
 
-    if (
-        uploaded_images
-        and st.button(
-            "☁ BULUT YÜKLEMESİNİ BAŞLAT"
-        )
-    ):
-
-        required_fields = [
-            r2_endpoint,
-            r2_access_key,
-            r2_secret_key,
-            r2_bucket,
-            r2_public_url
-        ]
-
-        if not all(required_fields):
-
-            st.error(
-                "Lütfen tüm Cloudflare R2 ayarlarını doldurun."
-            )
-
-        else:
+        if st.button(
+            "☁ GÖRSELLERİ BULUTA YÜKLE",
+            key="upload_to_r2"
+        ):
 
             try:
 
-                s3_client = boto3.client(
-                    "s3",
-                    endpoint_url=r2_endpoint.rstrip("/"),
-                    aws_access_key_id=r2_access_key,
-                    aws_secret_access_key=r2_secret_key,
-                    region_name="auto",
-                    config=Config(
-                        signature_version="s3v4"
-                    )
-                )
+                settings = st.session_state.r2_settings
 
-                results = []
+                if not all([
+                    settings.get("endpoint"),
+                    settings.get("access_key"),
+                    settings.get("secret_key"),
+                    settings.get("bucket"),
+                    settings.get("public_url")
+                ]):
 
-                progress_bar = st.progress(0)
-
-                status_text = st.empty()
-
-                success_count = 0
-                error_count = 0
-
-                for index, image_file in enumerate(
-                    uploaded_images
-                ):
-
-                    try:
-
-                        status_text.write(
-                            f"Yükleniyor: "
-                            f"{image_file.name} "
-                            f"({index + 1}/"
-                            f"{len(uploaded_images)})"
-                        )
-
-                        file_bytes = image_file.getvalue()
-
-                        content_type = (
-                            mimetypes.guess_type(
-                                image_file.name
-                            )[0]
-                            or "application/octet-stream"
-                        )
-
-                        safe_filename = (
-                            clean_filename(
-                                Path(image_file.name).stem
-                            )
-                            + Path(image_file.name).suffix.lower()
-                        )
-
-                        s3_client.put_object(
-                            Bucket=r2_bucket,
-                            Key=safe_filename,
-                            Body=file_bytes,
-                            ContentType=content_type
-                        )
-
-                        generated_url = (
-                            f"{r2_public_url.rstrip('/')}/"
-                            f"{quote(safe_filename)}"
-                        )
-
-                        results.append([
-                            image_file.name,
-                            Path(
-                                image_file.name
-                            ).suffix
-                            .lower()
-                            .lstrip(".")
-                            .upper(),
-                            round(
-                                len(file_bytes)
-                                / 1048576,
-                                3
-                            ),
-                            generated_url,
-                            "Başarılı"
-                        ])
-
-                        success_count += 1
-
-                    except Exception as error:
-
-                        results.append([
-                            image_file.name,
-                            "",
-                            "",
-                            "",
-                            f"Hata: {str(error)}"
-                        ])
-
-                        error_count += 1
-
-                    progress_bar.progress(
-                        (index + 1)
-                        / len(uploaded_images)
+                    st.error(
+                        "Önce tüm Cloudflare R2 ayarlarını doldurun."
                     )
 
-                status_text.empty()
+                else:
 
-                workbook = Workbook()
+                    client = get_r2_client()
 
-                worksheet = workbook.active
+                    results = []
 
-                worksheet.title = "Image URLs"
+                    progress = st.progress(0)
+                    status = st.empty()
 
-                worksheet.append([
-                    "DOSYA_ADI",
-                    "FORMAT",
-                    "BOYUT_MB",
-                    "URL",
-                    "DURUM"
-                ])
+                    success_count = 0
+                    error_count = 0
 
-                for row in results:
-
-                    worksheet.append(row)
-
-                for column in worksheet.columns:
-
-                    max_length = 0
-
-                    column_letter = (
-                        column[0].column_letter
-                    )
-
-                    for cell in column:
+                    for index, image_file in enumerate(
+                        uploaded_images
+                    ):
 
                         try:
 
-                            cell_length = len(
-                                str(cell.value)
+                            status.write(
+                                f"Buluta yükleniyor • "
+                                f"{index + 1}/{len(uploaded_images)} • "
+                                f"{image_file.name}"
                             )
 
-                            if (
-                                cell_length
-                                > max_length
-                            ):
+                            file_bytes = image_file.getvalue()
 
-                                max_length = cell_length
+                            content_type = (
+                                mimetypes.guess_type(
+                                    image_file.name
+                                )[0]
+                                or "application/octet-stream"
+                            )
 
-                        except Exception:
-                            pass
+                            stem = clean_filename(
+                                Path(image_file.name).stem
+                            )
 
-                    worksheet.column_dimensions[
-                        column_letter
-                    ].width = min(
-                        max_length + 2,
-                        70
+                            extension = (
+                                Path(image_file.name)
+                                .suffix
+                                .lower()
+                            )
+
+                            safe_filename = (
+                                f"{stem}{extension}"
+                            )
+
+                            client.put_object(
+                                Bucket=settings["bucket"],
+                                Key=safe_filename,
+                                Body=file_bytes,
+                                ContentType=content_type
+                            )
+
+                            generated_url = (
+                                f"{settings['public_url'].rstrip('/')}/"
+                                f"{quote(safe_filename)}"
+                            )
+
+                            results.append([
+                                image_file.name,
+                                extension.lstrip(".").upper(),
+                                round(
+                                    len(file_bytes) / 1048576,
+                                    3
+                                ),
+                                generated_url,
+                                "BAŞARILI"
+                            ])
+
+                            success_count += 1
+
+                        except Exception as error:
+
+                            results.append([
+                                image_file.name,
+                                "",
+                                "",
+                                "",
+                                f"HATA: {str(error)}"
+                            ])
+
+                            error_count += 1
+
+                        progress.progress(
+                            (index + 1)
+                            / len(uploaded_images)
+                        )
+
+                    status.empty()
+
+                    excel = create_excel_report(
+                        results,
+                        [
+                            "DOSYA_ADI",
+                            "FORMAT",
+                            "BOYUT_MB",
+                            "URL",
+                            "DURUM"
+                        ]
                     )
 
-                excel_buffer = io.BytesIO()
-
-                workbook.save(excel_buffer)
-
-                excel_buffer.seek(0)
-
-                st.success(
-                    f"Yükleme tamamlandı. "
-                    f"{success_count} görsel başarıyla yüklendi."
-                )
-
-                if error_count > 0:
-
-                    st.warning(
-                        f"{error_count} görsel yüklenemedi."
+                    st.session_state.r2_excel = (
+                        excel.getvalue()
                     )
 
-                st.download_button(
-                    label="📊 EXCEL URL RAPORUNU İNDİR",
-                    data=excel_buffer.getvalue(),
-                    file_name=(
-                        "sistemist_image_urls.xlsx"
-                    ),
-                    mime=(
-                        "application/vnd.openxmlformats-"
-                        "officedocument.spreadsheetml.sheet"
+                    st.session_state.r2_excel_name = (
+                        "sistemist-r2-url-raporu.xlsx"
                     )
-                )
+
+                    add_history(
+                        "Görsel → URL",
+                        f"{len(uploaded_images)} görsel",
+                        success_count,
+                        error_count,
+                        "R2 yüklemesi tamamlandı"
+                    )
+
+                    st.success(
+                        f"Yükleme tamamlandı • "
+                        f"{success_count} başarılı • "
+                        f"{error_count} hatalı"
+                    )
 
             except Exception as error:
 
                 st.error(
-                    f"Cloudflare R2 bağlantı hatası: "
-                    f"{str(error)}"
+                    f"Cloudflare R2 hatası: {error}"
                 )
+
+    if st.session_state.r2_excel:
+
+        st.download_button(
+            "↓ EXCEL URL RAPORUNU İNDİR",
+            data=st.session_state.r2_excel,
+            file_name=st.session_state.r2_excel_name,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="download_r2_excel"
+        )
+
+
+# =========================================================
+# TOPLU DÖNÜŞTÜRME
+# =========================================================
+
+elif st.session_state.page == "batch":
+
+    st.markdown(
+        """
+        <div class="hero">
+            <div class="hero-kicker">
+                TOPLU GÖRSEL MOTORU
+            </div>
+
+            <h1>Toplu Dönüştürme</h1>
+
+            <div class="hero-subtitle">
+                Bilgisayarınızdaki görselleri tek seferde
+                farklı formatlara ve ölçülere dönüştürün.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    files = st.file_uploader(
+        "Görselleri seçin",
+        type=[
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "gif"
+        ],
+        accept_multiple_files=True,
+        key="batch_upload"
+    )
+
+    if files:
+
+        a, b, c, d = st.columns(4)
+
+        with a:
+            output_format = st.selectbox(
+                "Yeni format",
+                ["JPG", "PNG", "WEBP", "AVIF"]
+            )
+
+        with b:
+            size_mode = st.selectbox(
+                "Yeni ölçü",
+                [
+                    "1200 × 1200",
+                    "1200 × 1800",
+                    "1080 × 1350",
+                    "Orijinal"
+                ]
+            )
+
+        with c:
+            fit_mode = st.selectbox(
+                "Yerleşim",
+                ["Sığdır", "Kırp"]
+            )
+
+        with d:
+            quality = st.slider(
+                "Kalite",
+                50,
+                100,
+                90
+            )
+
+        if st.button(
+            "◈ TOPLU DÖNÜŞTÜRMEYİ BAŞLAT",
+            key="start_batch"
+        ):
+
+            size_map = {
+                "1200 × 1200": (1200, 1200),
+                "1200 × 1800": (1200, 1800),
+                "1080 × 1350": (1080, 1350),
+            }
+
+            target_size = size_map.get(size_mode)
+
+            zip_buffer = io.BytesIO()
+
+            progress = st.progress(0)
+            status = st.empty()
+
+            success_count = 0
+            error_count = 0
+
+            with zipfile.ZipFile(
+                zip_buffer,
+                "w",
+                zipfile.ZIP_DEFLATED
+            ) as zip_file:
+
+                for index, file in enumerate(files):
+
+                    try:
+
+                        status.write(
+                            f"Dönüştürülüyor • "
+                            f"{index + 1}/{len(files)} • "
+                            f"{file.name}"
+                        )
+
+                        original = Image.open(
+                            io.BytesIO(file.getvalue())
+                        )
+
+                        processed = prepare_image(
+                            original,
+                            target_size,
+                            fit_mode
+                        )
+
+                        image_buffer, extension = (
+                            save_processed_image(
+                                processed,
+                                output_format,
+                                quality,
+                                original.format
+                            )
+                        )
+
+                        filename = (
+                            clean_filename(
+                                Path(file.name).stem
+                            )
+                            + extension
+                        )
+
+                        zip_file.writestr(
+                            filename,
+                            image_buffer.getvalue()
+                        )
+
+                        success_count += 1
+
+                    except Exception:
+                        error_count += 1
+
+                    progress.progress(
+                        (index + 1) / len(files)
+                    )
+
+            status.empty()
+
+            zip_buffer.seek(0)
+
+            st.session_state.batch_zip = (
+                zip_buffer.getvalue()
+            )
+
+            st.session_state.batch_zip_name = (
+                "sistemist-toplu-donusturme.zip"
+            )
+
+            add_history(
+                "Toplu Dönüştürme",
+                f"{len(files)} dosya",
+                success_count,
+                error_count,
+                "ZIP çıktısı oluşturuldu"
+            )
+
+            st.success(
+                f"Dönüştürme tamamlandı • "
+                f"{success_count} başarılı"
+            )
+
+    if st.session_state.batch_zip:
+
+        st.download_button(
+            "↓ DÖNÜŞTÜRÜLEN GÖRSELLERİ İNDİR",
+            data=st.session_state.batch_zip,
+            file_name=st.session_state.batch_zip_name,
+            mime="application/zip",
+            key="download_batch_zip"
+        )
+
+
+# =========================================================
+# İŞLEM GEÇMİŞİ
+# =========================================================
+
+elif st.session_state.page == "history":
+
+    st.markdown(
+        """
+        <div class="hero">
+            <div class="hero-kicker">
+                OPERASYON KAYITLARI
+            </div>
+
+            <h1>İşlem Geçmişi</h1>
+
+            <div class="hero-subtitle">
+                Bu oturumda gerçekleştirilen görsel operasyonlarını
+                ve işlem sonuçlarını görüntüleyin.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    if st.session_state.history:
+
+        rows = []
+
+        for item in reversed(
+            st.session_state.history
+        ):
+
+            rows.append({
+                "İŞLEM": item["operation"],
+                "KAYNAK": item["source"],
+                "TARİH": item["date"],
+                "BAŞARILI": item["success"],
+                "HATALI": item["failed"],
+                "SONUÇ": item["result"]
+            })
+
+        st.dataframe(
+            rows,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        if st.button(
+            "GEÇMİŞİ TEMİZLE",
+            key="clear_history"
+        ):
+            st.session_state.history = []
+            st.success(
+                "İşlem geçmişi temizlendi."
+            )
+            time.sleep(0.5)
+            st.rerun()
+
+    else:
+
+        st.info(
+            "Henüz kayıtlı işlem bulunmuyor."
+        )
+
+
+# =========================================================
+# CLOUD DOSYALARI
+# =========================================================
+
+elif st.session_state.page == "cloud":
+
+    st.markdown(
+        """
+        <div class="hero">
+            <div class="hero-kicker">
+                CLOUDFLARE R2
+            </div>
+
+            <h1>Cloud Dosyaları</h1>
+
+            <div class="hero-subtitle">
+                Cloudflare R2 bucket içerisindeki dosyalarınızı
+                görüntüleyin ve güncel durumunu kontrol edin.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    if st.button(
+        "↻ CLOUD DOSYALARINI YÜKLE",
+        key="load_cloud_files"
+    ):
+
+        try:
+
+            client = get_r2_client()
+
+            bucket = (
+                st.session_state.r2_settings["bucket"]
+            )
+
+            response = client.list_objects_v2(
+                Bucket=bucket
+            )
+
+            contents = response.get(
+                "Contents",
+                []
+            )
+
+            rows = []
+
+            for item in contents:
+
+                rows.append({
+                    "DOSYA": item["Key"],
+                    "BOYUT": f"{round(item['Size'] / 1048576, 3)} MB",
+                    "SON DEĞİŞİKLİK": item[
+                        "LastModified"
+                    ].strftime("%d.%m.%Y %H:%M")
+                })
+
+            if rows:
+
+                st.success(
+                    f"{len(rows)} dosya bulundu."
+                )
+
+                st.dataframe(
+                    rows,
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+            else:
+
+                st.info(
+                    "Bucket içerisinde dosya bulunamadı."
+                )
+
+        except Exception as error:
+
+            st.error(
+                f"Cloud dosyaları alınamadı: {error}"
+            )
+
+
+# =========================================================
+# R2 AYARLARI
+# =========================================================
+
+elif st.session_state.page == "r2":
+
+    st.markdown(
+        """
+        <div class="hero">
+            <div class="hero-kicker">
+                BULUT BAĞLANTISI
+            </div>
+
+            <h1>Cloud R2 Ayarları</h1>
+
+            <div class="hero-subtitle">
+                Sistemist Image Studio ile Cloudflare R2
+                depolama hesabınızı bağlayın.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    current = st.session_state.r2_settings
+
+    st.markdown(
+        '<div class="panel">',
+        unsafe_allow_html=True
+    )
+
+    endpoint = st.text_input(
+        "R2 Endpoint",
+        value=current.get("endpoint", ""),
+        placeholder="https://ACCOUNT_ID.r2.cloudflarestorage.com"
+    )
+
+    a, b = st.columns(2)
+
+    with a:
+        access_key = st.text_input(
+            "Access Key ID",
+            value=current.get("access_key", "")
+        )
+
+    with b:
+        secret_key = st.text_input(
+            "Secret Access Key",
+            value=current.get("secret_key", ""),
+            type="password"
+        )
+
+    c, d = st.columns(2)
+
+    with c:
+        bucket = st.text_input(
+            "Bucket Name",
+            value=current.get(
+                "bucket",
+                "sistemist-image-studio"
+            )
+        )
+
+    with d:
+        public_url = st.text_input(
+            "Public URL / CDN",
+            value=current.get("public_url", "")
+        )
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    x, y = st.columns(2)
+
+    with x:
+
+        if st.button(
+            "R2 AYARLARINI KAYDET",
+            key="save_r2_settings"
+        ):
+
+            st.session_state.r2_settings = {
+                "endpoint": endpoint,
+                "access_key": access_key,
+                "secret_key": secret_key,
+                "bucket": bucket,
+                "public_url": public_url
+            }
+
+            st.success(
+                "Cloudflare R2 ayarları kaydedildi."
+            )
+
+    with y:
+
+        if st.button(
+            "BAĞLANTIYI TEST ET",
+            key="test_r2"
+        ):
+
+            try:
+
+                temp_settings = {
+                    "endpoint": endpoint,
+                    "access_key": access_key,
+                    "secret_key": secret_key,
+                    "bucket": bucket,
+                    "public_url": public_url
+                }
+
+                old = st.session_state.r2_settings
+
+                st.session_state.r2_settings = (
+                    temp_settings
+                )
+
+                client = get_r2_client()
+
+                client.list_objects_v2(
+                    Bucket=bucket,
+                    MaxKeys=1
+                )
+
+                st.session_state.r2_settings = old
+
+                st.success(
+                    "✓ Cloudflare R2 bağlantısı başarılı."
+                )
+
+            except Exception as error:
+
+                st.session_state.r2_settings = old
+
+                st.error(
+                    f"Bağlantı kurulamadı: {error}"
+                )
+
+
+# =========================================================
+# GENEL AYARLAR
+# =========================================================
+
+elif st.session_state.page == "settings":
+
+    st.markdown(
+        """
+        <div class="hero">
+            <div class="hero-kicker">
+                UYGULAMA YÖNETİMİ
+            </div>
+
+            <h1>Genel Ayarlar</h1>
+
+            <div class="hero-subtitle">
+                Sistemist Image Studio varsayılan işlem
+                tercihlerinizi yönetin.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    current = st.session_state.settings
+
+    st.markdown(
+        '<div class="panel">',
+        unsafe_allow_html=True
+    )
+
+    default_format = st.selectbox(
+        "Varsayılan çıktı formatı",
+        ["JPG", "PNG", "WEBP", "AVIF"],
+        index=[
+            "JPG",
+            "PNG",
+            "WEBP",
+            "AVIF"
+        ].index(
+            current.get(
+                "default_format",
+                "JPG"
+            )
+        )
+    )
+
+    default_size = st.selectbox(
+        "Varsayılan görsel ölçüsü",
+        [
+            "1200 × 1200",
+            "1200 × 1800",
+            "1080 × 1350"
+        ]
+    )
+
+    default_quality = st.slider(
+        "Varsayılan kalite",
+        50,
+        100,
+        current.get("quality", 90)
+    )
+
+    auto_filename = st.checkbox(
+        "Dosya adlarını otomatik temizle",
+        value=current.get(
+            "auto_filename",
+            True
+        )
+    )
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    if st.button(
+        "GENEL AYARLARI KAYDET",
+        key="save_general_settings"
+    ):
+
+        st.session_state.settings = {
+            "default_format": default_format,
+            "default_size": default_size,
+            "quality": default_quality,
+            "auto_filename": auto_filename
+        }
+
+        st.success(
+            "Genel ayarlar kaydedildi."
+        )
+
+
+# =========================================================
+# YARDIM
+# =========================================================
+
+elif st.session_state.page == "help":
+
+    st.markdown(
+        """
+        <div class="hero">
+            <div class="hero-kicker">
+                SİSTEMİST DESTEK
+            </div>
+
+            <h1>Yardım Merkezi</h1>
+
+            <div class="hero-subtitle">
+                Image Studio araçlarının kullanımı için
+                hızlı başlangıç rehberi.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    help_items = [
+        (
+            "URL → Görsel",
+            "Excel dosyanızı yükleyin. Görsel URL sütunları otomatik algılanır. Dosya adı için ürün kodu veya SKU sütununu seçin ve ZIP çıktısını oluşturun."
+        ),
+        (
+            "Görsel → URL",
+            "Cloudflare R2 bağlantınızı kurun. Görselleri yükleyin ve sistemin oluşturduğu URL listesini Excel olarak indirin."
+        ),
+        (
+            "Toplu Dönüştürme",
+            "Birden fazla görsel seçin. Çıktı formatını, ölçüsünü ve kalite seviyesini belirleyerek tek ZIP dosyasında indirin."
+        ),
+        (
+            "Cloud Dosyaları",
+            "Cloudflare R2 bucket içerisinde bulunan dosyaları görüntüleyin ve depolama durumunuzu kontrol edin."
+        ),
+    ]
+
+    a, b = st.columns(2)
+
+    for index, item in enumerate(help_items):
+
+        title, body = item
+
+        target = a if index % 2 == 0 else b
+
+        with target:
+
+            st.markdown(
+                f"""
+                <div class="tool-card">
+                    <div class="tool-title">
+                        {title}
+                    </div>
+
+                    <div class="tool-description">
+                        {body}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+
+# =========================================================
+# PAKET / LİSANS
+# =========================================================
+
+elif st.session_state.page == "license":
+
+    st.markdown(
+        """
+        <div class="hero">
+            <div class="hero-kicker">
+                SİSTEMİST MEMBERSHIP
+            </div>
+
+            <h1>Paket & Lisans</h1>
+
+            <div class="hero-subtitle">
+                Aktif kullanım paketiniz ve Sistemist Image Studio
+                üyelik bilgileriniz.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    a, b, c = st.columns(3)
+
+    packages = [
+        (
+            "STARTER",
+            "Başlangıç",
+            [
+                "Temel görsel işleme",
+                "URL → Görsel",
+                "Toplu dönüştürme"
+            ]
+        ),
+        (
+            "PRO",
+            "Profesyonel",
+            [
+                "Tüm görsel araçları",
+                "Cloudflare R2",
+                "Toplu operasyonlar",
+                "Excel raporları"
+            ]
+        ),
+        (
+            "BUSINESS",
+            "İşletme",
+            [
+                "PRO özellikleri",
+                "Gelişmiş kullanım",
+                "Kurumsal çözümler",
+                "Öncelikli destek"
+            ]
+        )
+    ]
+
+    cols = [a, b, c]
+
+    for col, package in zip(cols, packages):
+
+        code, name, features = package
+
+        active = (
+            code == st.session_state.plan
+        )
+
+        feature_html = "".join(
+            [
+                f"""
+                <div style="
+                    color:#8794a4;
+                    font-size:11px;
+                    padding:7px 0;
+                    border-bottom:1px solid #202a36;
+                ">
+                    ✓ {feature}
+                </div>
+                """
+                for feature in features
+            ]
+        )
+
+        with col:
+
+            st.markdown(
+                f"""
+                <div class="tool-card">
+
+                    <div class="tool-title">
+                        {code}
+                    </div>
+
+                    <div style="
+                        color:#ff7a18;
+                        font-size:12px;
+                        margin:8px 0 16px;
+                    ">
+                        {name}
+                    </div>
+
+                    {feature_html}
+
+                    <div style="
+                        margin-top:18px;
+                        color:#8bd7a4;
+                        font-size:10px;
+                        font-weight:700;
+                    ">
+                        {"● AKTİF PAKET" if active else ""}
+                    </div>
+
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+            if st.button(
+                (
+                    "AKTİF PAKET"
+                    if active
+                    else f"{code} PAKETİNİ SEÇ"
+                ),
+                key=f"package_{code}"
+            ):
+
+                st.session_state.plan = code
+
+                st.success(
+                    f"{code} paketi aktif olarak seçildi."
+                )
+
+                time.sleep(0.5)
+                st.rerun()
+
+
+# =========================================================
+# FOOTER
+# =========================================================
+
+st.markdown(
+    """
+    <div style="
+        text-align:center;
+        color:#4e5a69;
+        font-size:10px;
+        padding:35px 0 5px 0;
+        letter-spacing:.5px;
+    ">
+        © 2026 SİSTEMİST IMAGE STUDIO • PROFESSIONAL SAAS PLATFORM
+    </div>
+    """,
+    unsafe_allow_html=True
+)
