@@ -1063,31 +1063,18 @@ def go_to(page):
 
 with st.sidebar:
 
-    st.markdown(
-        dedent("""
-        <div class="sidebar-wrap">
-
-            <div class="sidebar-brand">
-
-                <div class="brand-row">
-                    <div class="brand-symbol"></div>
-
-                    <div>
-                        <div class="brand-name">
-                            SİST<span>EM</span>İST
-                        </div>
-                    </div>
-                </div>
-
-                <div class="brand-version">
-                    IMAGE STUDIO WEB • V7.7 PRO
-                </div>
-
-            </div>
-        </div>
-        """),
-        unsafe_allow_html=True
+    sidebar_brand_html = (
+        '<div class="sidebar-wrap">'
+        '<div class="sidebar-brand">'
+        '<div class="brand-row">'
+        '<div class="brand-symbol"></div>'
+        '<div><div class="brand-name">SİST<span>EM</span>İST</div></div>'
+        '</div>'
+        '<div class="brand-version">IMAGE STUDIO WEB • V7.7 PRO</div>'
+        '</div>'
+        '</div>'
     )
+    st.markdown(sidebar_brand_html, unsafe_allow_html=True)
 
     st.markdown('<div class="nav-label">Ana Menü</div>', unsafe_allow_html=True)
 
@@ -1125,20 +1112,16 @@ with st.sidebar:
     if st.button("◆ Paket & Lisans", key="nav_package"):
         go_to("Paket & Lisans")
 
-    st.markdown(
-        dedent("""
-        <div class="sidebar-wrap sidebar-bottom">
-            <div class="sidebar-status">
-                <div class="status-dot"></div>
-                <div>
-                    <div class="status-text">Sistem Aktif</div>
-                    <div class="status-sub">Image Studio hizmete hazır</div>
-                </div>
-            </div>
-        </div>
-        """),
-        unsafe_allow_html=True
+    sidebar_status_html = (
+        '<div class="sidebar-wrap sidebar-bottom">'
+        '<div class="sidebar-status">'
+        '<div class="status-dot"></div>'
+        '<div><div class="status-text">Sistem Aktif</div>'
+        '<div class="status-sub">Image Studio hizmete hazır</div></div>'
+        '</div>'
+        '</div>'
     )
+    st.markdown(sidebar_status_html, unsafe_allow_html=True)
 
 
 # =========================================================
