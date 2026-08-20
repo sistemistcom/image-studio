@@ -1,6 +1,6 @@
-streamlit>=1.48,<2.0
-requests>=2.32,<3.0
-boto3>=1.35,<2.0
-botocore>=1.35,<2.0
-Pillow>=10.4,<13.0
-openpyxl>=3.1,<4.0
+streamlit>=1.44
+requests>=2.32
+boto3>=1.35
+botocore>=1.35
+Pillow>=10.4
+openpyxl>=3.1
