@@ -1087,18 +1087,19 @@ def go_to(page):
 
 with st.sidebar:
 
-    sidebar_brand_html = (
-        '<div class="sidebar-wrap">'
-        '<div class="sidebar-brand">'
-        '<div class="brand-row">'
-        '<div class="brand-symbol"></div>'
-        '<div><div class="brand-name">SİST<span>EM</span>İST</div></div>'
-        '</div>'
-        '<div class="brand-version">IMAGE STUDIO WEB • V7.7 PRO</div>'
-        '</div>'
-        '</div>'
-    )
-    st.markdown(sidebar_brand_html, unsafe_allow_html=True)
+    sidebar_brand_html = """
+<div class="sidebar-wrap">
+    <div class="sidebar-brand">
+        <img
+            src="https://raw.githubusercontent.com/sistemistcom/image-studio/main/sistemist-logo-siyah(2).png"
+            class="sistemist-logo"
+            alt="Sistemist"
+        >
+    </div>
+</div>
+"""
+
+st.markdown(sidebar_brand_html, unsafe_allow_html=True)
 
     st.markdown('<div class="nav-label">Ana Menü</div>', unsafe_allow_html=True)
 
