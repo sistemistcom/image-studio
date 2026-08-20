@@ -22,20 +22,8 @@ from openpyxl import load_workbook, Workbook
 import streamlit as st
 
 
-def get_config_value(name, default=""):
-    """Render environment > Streamlit secrets > default."""
-    value = os.getenv(name, "")
-    if value:
-        return str(value)
-    try:
-        value = st.secrets.get(name, default)
-        return str(value) if value is not None else default
-    except Exception:
-        return default
-
-
 # =========================================================
-# SİSTEMİST IMAGE STUDIO WEB V8 STABLE
+# SİSTEMİST IMAGE STUDIO WEB V7.7 PRO
 # =========================================================
 
 os.environ["STREAMLIT_SERVER_ENABLE_CORS"] = "false"
@@ -56,14 +44,12 @@ st.set_page_config(
 DEFAULTS = {
     "current_page": "Dashboard",
     "history": [],
-    # R2 bilgileri Render Environment Variables veya Streamlit secrets'tan
-    # otomatik okunabilir. Panelden girilen değerler sadece aktif oturumda tutulur.
-    "r2_endpoint": get_config_value("R2_ENDPOINT", ""),
-    "r2_access_key": get_config_value("R2_ACCESS_KEY_ID", ""),
-    "r2_secret_key": get_config_value("R2_SECRET_ACCESS_KEY", ""),
-    "r2_bucket": get_config_value("R2_BUCKET", "sistemist-image-studio"),
-    "r2_public_url": get_config_value("R2_PUBLIC_URL", ""),
-    "r2_region": get_config_value("R2_REGION", "auto"),
+    "r2_endpoint": "",
+    "r2_access_key": "",
+    "r2_secret_key": "",
+    "r2_bucket": "sistemist-image-studio",
+    "r2_public_url": "",
+    "r2_region": "auto",
     "last_processed": 0,
     "last_success": 0,
     "active_package": "PRO",
@@ -313,7 +299,7 @@ h1 {
     color: #f5f7fa !important;
 }
 
-p, span, label {
+p, label {
     font-family: 'Inter', sans-serif !important;
 }
 
@@ -360,12 +346,15 @@ p, span, label {
 
 .hero-title {
     color: #f5f7fb;
-    font-size: 35px;
+    font-size: clamp(28px, 3vw, 35px);
     font-weight: 700;
     letter-spacing: -.8px;
     margin: 0;
     position: relative;
     z-index: 2;
+    line-height: 1.18;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .hero-title span {
@@ -653,14 +642,23 @@ hr {
     text-align: center;
 }
 
-
-/* V8 DASHBOARD POLISH */
-[data-testid="stSidebar"]{width:285px!important;min-width:285px!important;background:linear-gradient(180deg,#121c29 0%,#0d1520 100%)!important;}
-.sidebar-wrap{padding:28px 26px 0;}.sidebar-brand{padding-bottom:23px;border-bottom:1px solid #263647}.brand-symbol{width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,#ff8a2a,#ff5900);display:flex;align-items:center;justify-content:center;box-shadow:0 12px 28px rgba(255,106,0,.2)}.brand-symbol:before{content:"S";color:#fff;font-size:24px;font-weight:800;font-family:'Space Grotesk',sans-serif}.brand-symbol:after{display:none!important}.brand-name{font-size:24px;letter-spacing:3px}.brand-name span{color:#fff}.brand-version{color:#ff9b4c;margin:8px 0 0 61px;font-size:10px;letter-spacing:3px}.nav-label{font-size:10px;letter-spacing:3px;margin:27px 12px 10px}
-[data-testid="stSidebar"] .stButton{margin:0 0 5px}[data-testid="stSidebar"] .stButton>button{min-height:48px;background:transparent!important;color:#c3ceda!important;border:1px solid transparent!important;border-radius:11px!important;box-shadow:none!important;justify-content:flex-start!important;text-align:left!important}[data-testid="stSidebar"] .stButton>button:hover{background:#182534!important;border-color:#2a3d50!important;color:#fff!important;transform:translateX(2px)!important}[data-testid="stSidebar"] .stButton>button[kind="primary"]{color:#fff!important;border-color:#a84c0b!important;background:linear-gradient(90deg,#8d3e0a 0%,#c45a0b 58%,#ff6a00 100%)!important;box-shadow:0 8px 24px rgba(255,106,0,.18)!important}
-.sidebar-bottom{margin:24px 26px!important;padding:18px!important;border:1px solid #314254!important;border-radius:16px!important;background:linear-gradient(145deg,#192432,#121b26)!important}.sidebar-status{display:block!important;padding:0!important;background:transparent!important;border:0!important}.status-dot{display:inline-block;margin-right:7px}.status-text{display:inline}.status-sub{margin-top:9px}
-.dashboard-heading{margin:0 0 26px}.page-kicker{color:#ff9b4c;font-size:10px;font-weight:800;letter-spacing:3px;text-transform:uppercase;margin-bottom:10px}.page-title{color:#f7f9fc;font-family:'Space Grotesk',sans-serif;font-size:34px;font-weight:700;letter-spacing:-.8px;margin:0}.page-subtitle{color:#98a8ba;font-size:14px;line-height:1.75;margin-top:8px}.dash-card{min-height:255px;padding:28px 29px;border-radius:20px;background:linear-gradient(145deg,#172230,#111a25);border:1px solid #2b3d50;position:relative;overflow:hidden}.dash-card:after{content:"";position:absolute;right:-45px;top:-45px;width:150px;height:150px;border-radius:50%;background:rgba(255,106,0,.045)}.dash-icon{width:58px;height:58px;border-radius:16px;display:flex;align-items:center;justify-content:center;background:rgba(255,106,0,.09);border:1px solid rgba(255,138,42,.28);font-size:25px;margin-bottom:22px;color:#ff8a2a}.dash-title{font-size:21px;font-weight:700;color:#f4f7fb;margin-bottom:10px}.dash-text{font-size:13px;line-height:1.8;color:#95a5b7;max-width:470px}.dashboard-action .stButton>button{width:100%!important;margin-top:0!important}
-[data-testid="stFileUploader"]{background:#101923!important;border:1px dashed #4a6077!important;border-radius:18px!important;padding:16px!important}[data-testid="stFileUploader"] section{background:transparent!important;color:#dce6f0!important}[data-testid="stFileUploader"] button{background:linear-gradient(135deg,#ff7a18,#ff5b00)!important;color:#fff!important;border:1px solid #ff7a18!important;border-radius:10px!important;font-weight:700!important}[data-testid="stFileUploader"] small,[data-testid="stFileUploader"] span,[data-testid="stFileUploader"] div{color:#b8c5d3!important}
+.package-card{
+    min-height:245px;
+    display:flex;
+    flex-direction:column;
+    justify-content:flex-start;
+    margin-bottom:0!important;
+}
+.package-card .panel-title{
+    color:#f4f7fb!important;
+    font-size:28px!important;
+    line-height:1.25!important;
+    margin-top:14px!important;
+}
+.package-card .panel-subtitle{
+    margin-bottom:0!important;
+    color:#9aaabd!important;
+}
 
 </style>
 """), unsafe_allow_html=True)
@@ -974,9 +972,9 @@ def save_image_to_buffer(image, output_format, quality=90):
 
 def get_r2_client():
 
-    endpoint = str(st.session_state.r2_endpoint).strip()
-    access_key = str(st.session_state.r2_access_key).strip()
-    secret_key = str(st.session_state.r2_secret_key).strip()
+    endpoint = st.session_state.r2_endpoint.strip()
+    access_key = st.session_state.r2_access_key.strip()
+    secret_key = st.session_state.r2_secret_key.strip()
 
     if not endpoint:
         raise RuntimeError("R2 Endpoint girilmemiş.")
@@ -1006,11 +1004,11 @@ def get_r2_client():
 def r2_is_configured():
 
     return all([
-        str(st.session_state.r2_endpoint).strip(),
-        str(st.session_state.r2_access_key).strip(),
-        str(st.session_state.r2_secret_key).strip(),
-        str(st.session_state.r2_bucket).strip(),
-        str(st.session_state.r2_public_url).strip()
+        st.session_state.r2_endpoint.strip(),
+        st.session_state.r2_access_key.strip(),
+        st.session_state.r2_secret_key.strip(),
+        st.session_state.r2_bucket.strip(),
+        st.session_state.r2_public_url.strip()
     ])
 
 
@@ -1059,56 +1057,88 @@ def go_to(page):
     st.session_state.current_page = page
 
 
-def nav_button(label, page, key):
-    active = st.session_state.current_page == page
-    if st.button(label, key=key, type="primary" if active else "secondary"):
-        st.session_state.current_page = page
-        st.rerun()
-
-
 # =========================================================
 # SIDEBAR
 # =========================================================
 
 with st.sidebar:
-    st.markdown(dedent("""
+
+    st.markdown(
+        dedent("""
         <div class="sidebar-wrap">
+
             <div class="sidebar-brand">
+
                 <div class="brand-row">
                     <div class="brand-symbol"></div>
+
                     <div>
-                        <div class="brand-name">SİSTEMİST</div>
-                        <div class="brand-version">IMAGE STUDIO</div>
+                        <div class="brand-name">
+                            SİST<span>EM</span>İST
+                        </div>
                     </div>
+                </div>
+
+                <div class="brand-version">
+                    IMAGE STUDIO WEB • V7.7 PRO
+                </div>
+
+            </div>
+        </div>
+        """),
+        unsafe_allow_html=True
+    )
+
+    st.markdown('<div class="nav-label">Ana Menü</div>', unsafe_allow_html=True)
+
+    if st.button("⌂ Dashboard", key="nav_dashboard"):
+        go_to("Dashboard")
+
+    if st.button("↙ URL → Görsel", key="nav_url_image"):
+        go_to("URL → Görsel")
+
+    if st.button("↗ Görsel → URL", key="nav_image_url"):
+        go_to("Görsel → URL")
+
+    if st.button("◇ Toplu Dönüştürme", key="nav_batch"):
+        go_to("Toplu Dönüştürme")
+
+    if st.button("◷ İşlem Geçmişi", key="nav_history"):
+        go_to("İşlem Geçmişi")
+
+    st.markdown('<div class="nav-label">Sistem</div>', unsafe_allow_html=True)
+
+    if st.button("☁ Cloud Dosyaları", key="nav_cloud_files"):
+        go_to("Cloud Dosyaları")
+
+    if st.button("⚙ Cloud R2 Ayarları", key="nav_r2"):
+        go_to("Cloud R2 Ayarları")
+
+    if st.button("◉ Genel Ayarlar", key="nav_settings"):
+        go_to("Genel Ayarlar")
+
+    st.markdown('<div class="nav-label">Destek</div>', unsafe_allow_html=True)
+
+    if st.button("? Yardım Merkezi", key="nav_help"):
+        go_to("Yardım Merkezi")
+
+    if st.button("◆ Paket & Lisans", key="nav_package"):
+        go_to("Paket & Lisans")
+
+    st.markdown(
+        dedent("""
+        <div class="sidebar-wrap sidebar-bottom">
+            <div class="sidebar-status">
+                <div class="status-dot"></div>
+                <div>
+                    <div class="status-text">Sistem Aktif</div>
+                    <div class="status-sub">Image Studio hizmete hazır</div>
                 </div>
             </div>
         </div>
-    """), unsafe_allow_html=True)
-
-    st.markdown('<div class="nav-label">Çalışma Alanı</div>', unsafe_allow_html=True)
-    nav_button("⌂  Dashboard", "Dashboard", "nav_dashboard")
-    nav_button("↙  URL → Görsel", "URL → Görsel", "nav_url_image")
-    nav_button("↗  Görsel → URL", "Görsel → URL", "nav_image_url")
-    nav_button("◇  Toplu Dönüştürme", "Toplu Dönüştürme", "nav_batch")
-    nav_button("◷  İşlem Geçmişi", "İşlem Geçmişi", "nav_history")
-
-    st.markdown('<div class="nav-label">Sistem</div>', unsafe_allow_html=True)
-    nav_button("☁  Cloud Dosyaları", "Cloud Dosyaları", "nav_cloud_files")
-    nav_button("⚙  Cloud R2 Ayarları", "Cloud R2 Ayarları", "nav_r2")
-    nav_button("◉  Genel Ayarlar", "Genel Ayarlar", "nav_settings")
-
-    st.markdown('<div class="nav-label">Destek</div>', unsafe_allow_html=True)
-    nav_button("?  Yardım Merkezi", "Yardım Merkezi", "nav_help")
-    nav_button("◆  Paket & Lisans", "Paket & Lisans", "nav_package")
-
-    st.markdown(dedent("""
-        <div class="sidebar-bottom">
-            <div class="sidebar-status">
-                <div><span class="status-dot"></span><span class="status-text">Sistem Aktif</span></div>
-                <div class="status-sub">Image Studio hizmete hazır</div>
-            </div>
-        </div>
-    """), unsafe_allow_html=True)
+        """),
+        unsafe_allow_html=True
+    )
 
 
 # =========================================================
@@ -1117,56 +1147,181 @@ with st.sidebar:
 
 if st.session_state.current_page == "Dashboard":
 
+    page_header(
+        "Görsel operasyonlarınız <span>kontrol altında.</span>",
+        "E-ticaret görsellerinizi indirin, dönüştürün, yeniden boyutlandırın ve buluta yükleyin. Tüm operasyonlarınızı tek bir profesyonel çalışma alanından yönetin."
+    )
+
     total_history = len(st.session_state.history)
-    total_files = sum(item.get("Dosya", 0) for item in st.session_state.history)
-    success_files = sum(item.get("Dosya", 0) for item in st.session_state.history if item.get("Durum") == "Başarılı")
-    success_rate = round((success_files / total_files) * 100, 1) if total_files else 0
-    r2_ready = r2_is_configured()
 
-    st.markdown("""
-        <div class="dashboard-heading">
-            <div class="page-kicker">SİSTEMİST IMAGE STUDIO</div>
-            <div class="page-title">Image Studio</div>
-            <div class="page-subtitle">E-ticaret görsellerinizi indirin, işleyin ve buluta yükleyin. Tüm görsel operasyonlarınız tek panelde.</div>
-        </div>
-    """, unsafe_allow_html=True)
+    success_count = sum(
+        item["Dosya"]
+        for item in st.session_state.history
+        if item["Durum"] == "Başarılı"
+    )
 
-    st.markdown("""
-        <div class="hero">
-            <div class="system-read">SİSTEMİST IMAGE STUDIO</div>
-            <h1 class="hero-title">Görsel operasyonlarınızı tek merkezden yönetin.</h1>
-            <div class="hero-subtitle">Excel'deki ürün görsellerini toplu indirin, yeniden boyutlandırın, ZIP oluşturun veya görsellerinizi Cloudflare R2'ye yükleyerek doğrudan kullanılabilir URL'ler oluşturun.</div>
-        </div>
-    """, unsafe_allow_html=True)
+    total_files = sum(
+        item["Dosya"]
+        for item in st.session_state.history
+    )
 
-    engine1, engine2 = st.columns(2, gap="large")
+    r2_status = (
+        "HAZIR"
+        if r2_is_configured()
+        else "AYARLA"
+    )
+
+    success_rate = (
+        "%100"
+        if total_history > 0
+        else "%0"
+    )
+
+    stat1, stat2, stat3, stat4, stat5 = st.columns(5)
+
+    with stat1:
+        st.markdown(
+            dedent(f"""
+            <div class="stat-card orange">
+                <div class="stat-icon">✓</div>
+                <div class="stat-label">Toplam İşlem</div>
+                <div class="stat-value">{total_history}</div>
+                <div class="stat-sub">{total_files} dosya işlendi</div>
+            </div>
+            """),
+            unsafe_allow_html=True
+        )
+
+    with stat2:
+        st.markdown(
+            dedent(f"""
+            <div class="stat-card orange">
+                <div class="stat-icon">☁</div>
+                <div class="stat-label">Cloud R2</div>
+                <div class="stat-value">{r2_status}</div>
+                <div class="stat-sub">Cloudflare depolama</div>
+            </div>
+            """),
+            unsafe_allow_html=True
+        )
+
+    with stat3:
+        st.markdown(
+            dedent(f"""
+            <div class="stat-card orange">
+                <div class="stat-icon">↗</div>
+                <div class="stat-label">Başarı Oranı</div>
+                <div class="stat-value">{success_rate}</div>
+                <div class="stat-sub">{success_count} başarılı dosya</div>
+            </div>
+            """),
+            unsafe_allow_html=True
+        )
+
+    with stat4:
+        st.markdown(
+            dedent(f"""
+            <div class="stat-card orange">
+                <div class="stat-icon">◆</div>
+                <div class="stat-label">Aktif Paket</div>
+                <div class="stat-value">{st.session_state.active_package}</div>
+                <div class="stat-sub">Image Studio üyeliği</div>
+            </div>
+            """),
+            unsafe_allow_html=True
+        )
+
+    with stat5:
+        st.markdown(
+            dedent("""
+            <div class="stat-card orange">
+                <div class="stat-icon">●</div>
+                <div class="stat-label">Sistem Durumu</div>
+                <div class="stat-value">HAZIR</div>
+                <div class="stat-sub">Tüm servisler aktif</div>
+            </div>
+            """),
+            unsafe_allow_html=True
+        )
+
+    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+    engine1, engine2 = st.columns(2)
+
     with engine1:
-        st.markdown("""<div class="dash-card"><div class="dash-icon">↓</div><div class="dash-title">URL → Görsel Motoru</div><div class="dash-text">Excel dosyanızdaki ürün görsel bağlantılarını otomatik olarak indirin. JPG, PNG veya WEBP dönüşümü yapın. İstediğiniz ölçüde görselleri işleyip tek ZIP dosyasında alın.</div></div>""", unsafe_allow_html=True)
-        st.markdown('<div class="dashboard-action">', unsafe_allow_html=True)
+
+        st.markdown(
+            dedent("""
+            <div class="engine-card">
+                <div class="engine-icon">↙</div>
+                <div class="engine-title">URL → Görsel Motoru</div>
+                <div class="engine-text">
+                    Excel dosyanızdaki ürün görsel bağlantılarını toplu olarak
+                    indirin. JPG, PNG veya WEBP formatına dönüştürün ve
+                    profesyonel e-ticaret ölçülerinde yeniden hazırlayın.
+                </div>
+            </div>
+            """),
+            unsafe_allow_html=True
+        )
+
         if st.button("URL → GÖRSEL MOTORUNU AÇ", key="open_url_engine"):
-            go_to("URL → Görsel"); st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+            go_to("URL → Görsel")
+            st.rerun()
+
     with engine2:
-        st.markdown("""<div class="dash-card"><div class="dash-icon">☁</div><div class="dash-title">Görsel → URL Motoru</div><div class="dash-text">Yerel görsellerinizi doğrudan Cloudflare R2 depolamaya yükleyin. İşlem tamamlandığında tüm görsel URL'lerini içeren hazır Excel raporunu tek tıklamayla indirin.</div></div>""", unsafe_allow_html=True)
-        st.markdown('<div class="dashboard-action">', unsafe_allow_html=True)
+
+        st.markdown(
+            dedent("""
+            <div class="engine-card">
+                <div class="engine-icon">↗</div>
+                <div class="engine-title">Görsel → URL Motoru</div>
+                <div class="engine-text">
+                    Bilgisayarınızdaki görselleri doğrudan Cloudflare R2 bulut
+                    depolamaya yükleyin. Oluşturulan paylaşılabilir URL'leri
+                    otomatik olarak Excel raporuna dönüştürün.
+                </div>
+            </div>
+            """),
+            unsafe_allow_html=True
+        )
+
         if st.button("GÖRSEL → URL MOTORUNU AÇ", key="open_image_engine"):
-            go_to("Görsel → URL"); st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+            go_to("Görsel → URL")
+            st.rerun()
 
-    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
-    c1,c2,c3,c4 = st.columns(4, gap="medium")
-    stats=[("⌁","Toplam Dönüştürme",f"{total_files:,}".replace(",","."),"Tüm zamanlar"),("✓","Başarılı İşlem",f"{success_files:,}".replace(",","."),f"%{success_rate} başarı oranı"),("◷","Kayıtlı Operasyon",str(total_history),"İşlem geçmişi"),("☁","Cloud R2","HAZIR" if r2_ready else "AYARLA","Depolama bağlantısı")]
-    for column,(icon,label,value,sub) in zip([c1,c2,c3,c4],stats):
-        with column:
-            st.markdown(f'<div class="stat-card"><div class="stat-icon">{icon}</div><div class="stat-label">{label}</div><div class="stat-value">{value}</div><div class="stat-sub">{sub}</div></div>', unsafe_allow_html=True)
+    st.markdown(
+        dedent("""
+        <div class="panel">
+            <div class="panel-title">Son İşlemler</div>
+            <div class="panel-subtitle">
+                Sistem üzerinde gerçekleştirilen son operasyonlar.
+            </div>
+        </div>
+        """),
+        unsafe_allow_html=True
+    )
 
-    st.markdown('<div class="panel"><div class="panel-title">Son İşlemler</div><div class="panel-subtitle">Sistem üzerinde gerçekleştirilen en son operasyonlar.</div></div>', unsafe_allow_html=True)
     if st.session_state.history:
-        st.dataframe(st.session_state.history[:8], use_container_width=True, hide_index=True)
+
+        preview = st.session_state.history[:5]
+
+        st.dataframe(
+            preview,
+            use_container_width=True,
+            hide_index=True
+        )
+
         if st.button("TÜM İŞLEM GEÇMİŞİNİ GÖR", key="dashboard_history"):
-            go_to("İşlem Geçmişi"); st.rerun()
+            go_to("İşlem Geçmişi")
+            st.rerun()
+
     else:
-        st.info("Henüz işlem geçmişi bulunmuyor. URL → Görsel veya Görsel → URL aracını kullanarak başlayabilirsiniz.")
+
+        st.info(
+            "Henüz işlem geçmişi bulunmuyor. URL → Görsel veya Görsel → URL aracını kullanarak başlayabilirsiniz."
+        )
+
     app_footer()
 
 
@@ -1559,11 +1714,8 @@ elif st.session_state.current_page == "Görsel → URL":
                         if not extension:
                             extension = ".jpg"
 
-                        # Aynı isimli dosyaların birbirini ezmesini önlemek için
-                        # her yüklemeye benzersiz bir zaman damgası eklenir.
-                        unique_stamp = datetime.now().strftime("%H%M%S%f")
                         filename = (
-                            f"{original_name}-{unique_stamp}"
+                            f"{original_name}"
                             f"{extension}"
                         )
 
@@ -1641,7 +1793,7 @@ elif st.session_state.current_page == "Görsel → URL":
                             results.append([
                                 uploaded_file.name,
                                 "",
-                                Path(uploaded_file.name).suffix.replace(".", "").upper(),
+                                "",
                                 "",
                                 "",
                                 f"HATA: {str(error)}"
@@ -2185,7 +2337,7 @@ elif st.session_state.current_page == "Cloud R2 Ayarları":
             st.session_state.r2_region = region.strip() or "auto"
 
             st.success(
-                "Cloudflare R2 ayarları kaydedildi. Kalıcı kullanım için aynı bilgileri Render Environment Variables bölümüne de ekleyin."
+                "Cloudflare R2 ayarları mevcut oturum için kaydedildi."
             )
 
     with col2:
@@ -2368,24 +2520,14 @@ elif st.session_state.current_page == "Paket & Lisans":
 
         with column:
 
-            st.markdown(
-                dedent(f"""
-                <div class="panel">
-                    <div class="system-read">
-                        {package["name"]}
-                    </div>
-
-                    <div class="panel-title">
-                        {package["price"]}
-                    </div>
-
-                    <div class="panel-subtitle">
-                        {package["desc"]}
-                    </div>
-                </div>
-                """),
-                unsafe_allow_html=True
+            package_html = (
+                f'<div class="panel package-card">'
+                f'<div class="system-read">{package["name"]}</div>'
+                f'<div class="panel-title">{package["price"]}</div>'
+                f'<div class="panel-subtitle">{package["desc"]}</div>'
+                f'</div>'
             )
+            st.markdown(package_html, unsafe_allow_html=True)
 
             if st.button(
                 f"{package['name']} PAKETİNİ SEÇ",
