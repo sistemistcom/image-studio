@@ -14,6 +14,10 @@ from botocore.config import Config
 from openpyxl import load_workbook, Workbook
 from PIL import Image, ImageOps
 import streamlit as st
+import os
+os.environ['STREAMLIT_SERVER_ENABLE_CORS'] = 'false'
+os.environ['STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION'] = 'false'
+
 
 st.set_page_config(
     page_title="Sistemist Image Studio Web",
