@@ -7,6 +7,7 @@ import zipfile
 import mimetypes
 import unicodedata
 from datetime import datetime
+from textwrap import dedent
 from pathlib import Path
 from urllib.parse import quote, urlparse
 
@@ -63,7 +64,7 @@ for key, value in DEFAULTS.items():
 # GLOBAL CSS
 # =========================================================
 
-st.markdown("""
+st.markdown(dedent("""
 <style>
 
 /* ---------------------------------------------------------
@@ -639,7 +640,7 @@ hr {
 }
 
 </style>
-""", unsafe_allow_html=True)
+"""), unsafe_allow_html=True)
 
 
 # =========================================================
@@ -1008,13 +1009,13 @@ def build_public_url(object_key):
 def page_header(title, subtitle, eyebrow="SİSTEMİST IMAGE STUDIO"):
 
     st.markdown(
-        f"""
+        dedent(f"""
         <div class="hero">
             <div class="system-read">{eyebrow}</div>
             <h1 class="hero-title">{title}</h1>
             <div class="hero-subtitle">{subtitle}</div>
         </div>
-        """,
+        """),
         unsafe_allow_html=True
     )
 
@@ -1022,11 +1023,11 @@ def page_header(title, subtitle, eyebrow="SİSTEMİST IMAGE STUDIO"):
 def app_footer():
 
     st.markdown(
-        """
+        dedent("""
         <div class="app-footer">
             © 2026 SİSTEMİST IMAGE STUDIO • PROFESSIONAL SAAS PLATFORM
         </div>
-        """,
+        """),
         unsafe_allow_html=True
     )
 
@@ -1042,7 +1043,7 @@ def go_to(page):
 with st.sidebar:
 
     st.markdown(
-        """
+        dedent("""
         <div class="sidebar-wrap">
 
             <div class="sidebar-brand">
@@ -1063,7 +1064,7 @@ with st.sidebar:
 
             </div>
         </div>
-        """,
+        """),
         unsafe_allow_html=True
     )
 
@@ -1104,7 +1105,7 @@ with st.sidebar:
         go_to("Paket & Lisans")
 
     st.markdown(
-        """
+        dedent("""
         <div class="sidebar-wrap sidebar-bottom">
             <div class="sidebar-status">
                 <div class="status-dot"></div>
@@ -1114,7 +1115,7 @@ with st.sidebar:
                 </div>
             </div>
         </div>
-        """,
+        """),
         unsafe_allow_html=True
     )
 
@@ -1159,66 +1160,66 @@ if st.session_state.current_page == "Dashboard":
 
     with stat1:
         st.markdown(
-            f"""
+            dedent(f"""
             <div class="stat-card orange">
                 <div class="stat-icon">✓</div>
                 <div class="stat-label">Toplam İşlem</div>
                 <div class="stat-value">{total_history}</div>
                 <div class="stat-sub">{total_files} dosya işlendi</div>
             </div>
-            """,
+            """),
             unsafe_allow_html=True
         )
 
     with stat2:
         st.markdown(
-            f"""
+            dedent(f"""
             <div class="stat-card orange">
                 <div class="stat-icon">☁</div>
                 <div class="stat-label">Cloud R2</div>
                 <div class="stat-value">{r2_status}</div>
                 <div class="stat-sub">Cloudflare depolama</div>
             </div>
-            """,
+            """),
             unsafe_allow_html=True
         )
 
     with stat3:
         st.markdown(
-            f"""
+            dedent(f"""
             <div class="stat-card orange">
                 <div class="stat-icon">↗</div>
                 <div class="stat-label">Başarı Oranı</div>
                 <div class="stat-value">{success_rate}</div>
                 <div class="stat-sub">{success_count} başarılı dosya</div>
             </div>
-            """,
+            """),
             unsafe_allow_html=True
         )
 
     with stat4:
         st.markdown(
-            f"""
+            dedent(f"""
             <div class="stat-card orange">
                 <div class="stat-icon">◆</div>
                 <div class="stat-label">Aktif Paket</div>
                 <div class="stat-value">{st.session_state.active_package}</div>
                 <div class="stat-sub">Image Studio üyeliği</div>
             </div>
-            """,
+            """),
             unsafe_allow_html=True
         )
 
     with stat5:
         st.markdown(
-            """
+            dedent("""
             <div class="stat-card orange">
                 <div class="stat-icon">●</div>
                 <div class="stat-label">Sistem Durumu</div>
                 <div class="stat-value">HAZIR</div>
                 <div class="stat-sub">Tüm servisler aktif</div>
             </div>
-            """,
+            """),
             unsafe_allow_html=True
         )
 
@@ -1229,7 +1230,7 @@ if st.session_state.current_page == "Dashboard":
     with engine1:
 
         st.markdown(
-            """
+            dedent("""
             <div class="engine-card">
                 <div class="engine-icon">↙</div>
                 <div class="engine-title">URL → Görsel Motoru</div>
@@ -1239,7 +1240,7 @@ if st.session_state.current_page == "Dashboard":
                     profesyonel e-ticaret ölçülerinde yeniden hazırlayın.
                 </div>
             </div>
-            """,
+            """),
             unsafe_allow_html=True
         )
 
@@ -1250,7 +1251,7 @@ if st.session_state.current_page == "Dashboard":
     with engine2:
 
         st.markdown(
-            """
+            dedent("""
             <div class="engine-card">
                 <div class="engine-icon">↗</div>
                 <div class="engine-title">Görsel → URL Motoru</div>
@@ -1260,7 +1261,7 @@ if st.session_state.current_page == "Dashboard":
                     otomatik olarak Excel raporuna dönüştürün.
                 </div>
             </div>
-            """,
+            """),
             unsafe_allow_html=True
         )
 
@@ -1269,14 +1270,14 @@ if st.session_state.current_page == "Dashboard":
             st.rerun()
 
     st.markdown(
-        """
+        dedent("""
         <div class="panel">
             <div class="panel-title">Son İşlemler</div>
             <div class="panel-subtitle">
                 Sistem üzerinde gerçekleştirilen son operasyonlar.
             </div>
         </div>
-        """,
+        """),
         unsafe_allow_html=True
     )
 
@@ -1344,14 +1345,14 @@ elif st.session_state.current_page == "URL → Görsel":
             else:
 
                 st.markdown(
-                    """
+                    dedent("""
                     <div class="panel">
                         <div class="panel-title">İşlem Ayarları</div>
                         <div class="panel-subtitle">
                             İndirilecek görsellerin formatını ve ölçülerini seçin.
                         </div>
                     </div>
-                    """,
+                    """),
                     unsafe_allow_html=True
                 )
 
@@ -2253,7 +2254,7 @@ elif st.session_state.current_page == "Cloud R2 Ayarları":
     )
 
     st.markdown(
-        """
+        dedent("""
         <div class="panel">
             <div class="panel-title">Cloudflare R2 API Bilgileri</div>
             <div class="panel-subtitle">
@@ -2261,7 +2262,7 @@ elif st.session_state.current_page == "Cloud R2 Ayarları":
                 ve bucket yapılandırmasına göre girilmelidir.
             </div>
         </div>
-        """,
+        """),
         unsafe_allow_html=True
     )
 
@@ -2366,14 +2367,14 @@ elif st.session_state.current_page == "Genel Ayarlar":
     )
 
     st.markdown(
-        """
+        dedent("""
         <div class="panel">
             <div class="panel-title">Uygulama Bilgileri</div>
             <div class="panel-subtitle">
                 Sistemist Image Studio Web V7.7 PRO
             </div>
         </div>
-        """,
+        """),
         unsafe_allow_html=True
     )
 
@@ -2499,7 +2500,7 @@ elif st.session_state.current_page == "Paket & Lisans":
         with column:
 
             st.markdown(
-                f"""
+                dedent(f"""
                 <div class="panel">
                     <div class="system-read">
                         {package["name"]}
@@ -2513,7 +2514,7 @@ elif st.session_state.current_page == "Paket & Lisans":
                         {package["desc"]}
                     </div>
                 </div>
-                """,
+                """),
                 unsafe_allow_html=True
             )
 
