@@ -565,19 +565,43 @@ p, label {
 }
 
 
+.section-title {
+    color: #d9e3ee !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    margin: 12px 0 8px 0 !important;
+}
+
 /* ---------------------------------------------------------
    FILE UPLOADER
 --------------------------------------------------------- */
 
 [data-testid="stFileUploader"] {
-    background: #111a24;
-    border: 1px dashed #3a4d61;
-    border-radius: 16px;
-    padding: 15px;
+    background: #111a24 !important;
+    border: 1px dashed #3a4d61 !important;
+    border-radius: 16px !important;
+    padding: 15px !important;
 }
 
 [data-testid="stFileUploader"]:hover {
-    border-color: var(--orange);
+    border-color: var(--orange) !important;
+}
+
+/* Only the file-picker button: never allow it to inherit Streamlit's white secondary style */
+[data-testid="stFileUploader"] button,
+[data-testid="stFileUploader"] [data-testid="stBaseButton-secondary"] {
+    background: linear-gradient(135deg, #ff8a2a, #ff5b00) !important;
+    color: #ffffff !important;
+    border: 1px solid #ff7a18 !important;
+    border-radius: 10px !important;
+    font-weight: 700 !important;
+    opacity: 1 !important;
+}
+
+[data-testid="stFileUploader"] button *,
+[data-testid="stFileUploader"] [data-testid="stBaseButton-secondary"] * {
+    color: #ffffff !important;
+    fill: #ffffff !important;
 }
 
 
@@ -1888,170 +1912,168 @@ elif st.session_state.current_page == "Toplu Dönüştürme":
         "SİSTEMİST BATCH ENGINE"
     )
 
+    # Önce işlem ayarlarını gösteriyoruz. Böylece kullanıcı dosya yüklemeden
+    # önce hangi işlemlerin yapılacağını açıkça görebilir.
+    st.markdown('<div class="section-title">Dönüştürme ayarları</div>', unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        batch_format = st.selectbox(
+            "Yeni format",
+            ["JPG", "PNG", "WEBP"],
+            key="batch_format"
+        )
+
+    with col2:
+        batch_size = st.selectbox(
+            "Yeni boyut",
+            [
+                "1200 × 1200 px",
+                "1200 × 1800 px",
+                "1000 × 1000 px",
+                "800 × 800 px",
+                "1920 × 1920 px",
+                "Orijinal Boyut"
+            ],
+            key="batch_size"
+        )
+
+    with col3:
+        batch_quality = st.slider(
+            "Kalite",
+            60,
+            100,
+            90,
+            key="batch_quality"
+        )
+
+    batch_fit = st.selectbox(
+        "Yerleşim yöntemi",
+        ["Sığdır", "Kırp"],
+        key="batch_fit"
+    )
+
+    st.markdown('<div class="section-title">Görselleri yükleyin</div>', unsafe_allow_html=True)
+
     uploaded_images = st.file_uploader(
         "Görselleri seçin",
-        type=[
-            "jpg", "jpeg", "png",
-            "webp", "gif", "bmp"
-        ],
+        type=["jpg", "jpeg", "png", "webp", "gif", "bmp"],
         accept_multiple_files=True,
         key="batch_images"
     )
 
     if uploaded_images:
+        st.success(f"{len(uploaded_images)} görsel seçildi. Ayarlarınıza göre dönüştürmeye hazır.")
+    else:
+        st.info("Önce dönüştürme ayarlarını belirleyin, ardından görsellerinizi seçin.")
 
-        st.success(
-            f"{len(uploaded_images)} görsel seçildi."
-        )
+    if st.button(
+        "TOPLU DÖNÜŞTÜRMEYİ BAŞLAT",
+        key="start_batch",
+        disabled=not uploaded_images
+    ):
 
-        col1, col2, col3 = st.columns(3)
+        if uploaded_images:
 
-        with col1:
+                target_size = get_target_size(
+                    batch_size
+                )
 
-            batch_format = st.selectbox(
-                "Yeni format",
-                ["JPG", "PNG", "WEBP"],
-                key="batch_format"
-            )
+                zip_buffer = io.BytesIO()
 
-        with col2:
+                success_count = 0
+                failed_count = 0
 
-            batch_size = st.selectbox(
-                "Yeni boyut",
-                [
-                    "1200 × 1200 px",
-                    "1200 × 1800 px",
-                    "1000 × 1000 px",
-                    "800 × 800 px",
-                    "1920 × 1920 px",
-                    "Orijinal Boyut"
-                ],
-                key="batch_size"
-            )
+                progress = st.progress(0)
 
-        with col3:
+                with zipfile.ZipFile(
+                    zip_buffer,
+                    "w",
+                    zipfile.ZIP_DEFLATED
+                ) as zip_file:
 
-            batch_quality = st.slider(
-                "Kalite",
-                60,
-                100,
-                90,
-                key="batch_quality"
-            )
+                    for index, uploaded_file in enumerate(
+                        uploaded_images
+                    ):
 
-        batch_fit = st.selectbox(
-            "Yerleşim yöntemi",
-            [
-                "Sığdır",
-                "Kırp"
-            ],
-            key="batch_fit"
-        )
+                        try:
 
-        if st.button(
-            "TOPLU DÖNÜŞTÜRMEYİ BAŞLAT",
-            key="start_batch"
-        ):
-
-            target_size = get_target_size(
-                batch_size
-            )
-
-            zip_buffer = io.BytesIO()
-
-            success_count = 0
-            failed_count = 0
-
-            progress = st.progress(0)
-
-            with zipfile.ZipFile(
-                zip_buffer,
-                "w",
-                zipfile.ZIP_DEFLATED
-            ) as zip_file:
-
-                for index, uploaded_file in enumerate(
-                    uploaded_images
-                ):
-
-                    try:
-
-                        image = Image.open(
-                            io.BytesIO(
-                                uploaded_file.getvalue()
+                            image = Image.open(
+                                io.BytesIO(
+                                    uploaded_file.getvalue()
+                                )
                             )
+
+                            image.load()
+
+                            processed_image = prepare_image(
+                                image,
+                                target_size,
+                                batch_fit
+                            )
+
+                            image_bytes, extension = save_image_to_buffer(
+                                processed_image,
+                                batch_format,
+                                batch_quality
+                            )
+
+                            base_name = clean_filename(
+                                Path(
+                                    uploaded_file.name
+                                ).stem
+                            )
+
+                            output_name = (
+                                f"{base_name}{extension}"
+                            )
+
+                            zip_file.writestr(
+                                output_name,
+                                image_bytes
+                            )
+
+                            success_count += 1
+
+                        except Exception:
+                            failed_count += 1
+
+                        progress.progress(
+                            (index + 1)
+                            / len(uploaded_images)
                         )
 
-                        image.load()
+                zip_buffer.seek(0)
 
-                        processed_image = prepare_image(
-                            image,
-                            target_size,
-                            batch_fit
-                        )
+                if success_count:
 
-                        image_bytes, extension = save_image_to_buffer(
-                            processed_image,
-                            batch_format,
-                            batch_quality
-                        )
-
-                        base_name = clean_filename(
-                            Path(
-                                uploaded_file.name
-                            ).stem
-                        )
-
-                        output_name = (
-                            f"{base_name}{extension}"
-                        )
-
-                        zip_file.writestr(
-                            output_name,
-                            image_bytes
-                        )
-
-                        success_count += 1
-
-                    except Exception:
-                        failed_count += 1
-
-                    progress.progress(
-                        (index + 1)
-                        / len(uploaded_images)
+                    add_history(
+                        "Toplu Dönüştürme",
+                        "Başarılı",
+                        f"{success_count} görsel dönüştürüldü",
+                        success_count
                     )
 
-            zip_buffer.seek(0)
+                    st.success(
+                        f"{success_count} görsel başarıyla dönüştürüldü."
+                    )
 
-            if success_count:
+                    st.download_button(
+                        "DÖNÜŞTÜRÜLEN GÖRSELLERİ İNDİR",
+                        data=zip_buffer.getvalue(),
+                        file_name=(
+                            "sistemist-toplu-donusum-"
+                            f"{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
+                        ),
+                        mime="application/zip"
+                    )
 
-                add_history(
-                    "Toplu Dönüştürme",
-                    "Başarılı",
-                    f"{success_count} görsel dönüştürüldü",
-                    success_count
-                )
+                if failed_count:
 
-                st.success(
-                    f"{success_count} görsel başarıyla dönüştürüldü."
-                )
-
-                st.download_button(
-                    "DÖNÜŞTÜRÜLEN GÖRSELLERİ İNDİR",
-                    data=zip_buffer.getvalue(),
-                    file_name=(
-                        "sistemist-toplu-donusum-"
-                        f"{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
-                    ),
-                    mime="application/zip"
-                )
-
-            if failed_count:
-
-                st.warning(
-                    f"{failed_count} görsel işlenemedi."
-                )
-
+                    st.warning(
+                        f"{failed_count} görsel işlenemedi."
+                    )
     app_footer()
 
 
