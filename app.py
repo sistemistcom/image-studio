@@ -238,20 +238,20 @@ Image Studio'yu kullanabilmek için satın alma işleminizde kullandığınız e
 
     if login_submit:
 
-        if not login_email or not login_code:
+    if not login_email or not login_code:
 
-            st.error(
-                "Lütfen e-posta adresinizi ve erişim kodunuzu girin."
+        st.error(
+            "Lütfen e-posta adresinizi ve erişim kodunuzu girin."
+        )
+
+    else:
+
+        with st.spinner("Erişim kontrol ediliyor..."):
+
+            success, login_data = validate_access(
+                login_email,
+                login_code
             )
-
-        else:
-
-            with st.spinner("Erişim kontrol ediliyor..."):
-
-                success, login_data = validate_access(
-                    login_email,
-                    login_code
-                )
 
     if success:
 
