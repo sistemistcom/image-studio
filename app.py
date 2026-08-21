@@ -152,7 +152,9 @@ if "customer_remaining_days" not in st.session_state:
 
 if "active_package" not in st.session_state:
     st.session_state.active_package = ""
-
+    
+if "access_checked" not in st.session_state:
+    st.session_state.access_checked = False
 
 # =========================================================
 # TOKEN KONTROLÜ
