@@ -58,7 +58,238 @@ DEFAULTS = {
 for key, value in DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = value
+# =========================================================
+# SİSTEMİST ERİŞİM KONTROLÜ
+# =========================================================
 
+ACCESS_API_URL = os.getenv(
+    "SISTEMIST_ACCESS_API_URL",
+    "https://sistemist.com/wp-json/sistemist/v1"
+)
+
+
+def validate_access(email, access_code):
+    """
+    WordPress / WooCommerce üzerinden müşterinin
+    satın alma ve erişim durumunu kontrol eder.
+    """
+
+    try:
+        response = requests.post(
+            f"{ACCESS_API_URL}/login",
+            json={
+                "email": email.strip().lower(),
+                "access_code": access_code.strip()
+            },
+            timeout=15
+        )
+
+        data = response.json()
+
+        if response.status_code == 200 and data.get("success"):
+            return True, data
+
+        return False, data
+
+    except Exception as error:
+        return False, {
+            "message": f"Sunucu bağlantısı kurulamadı: {str(error)}"
+        }
+
+
+def check_session_token(token):
+    """
+    Mevcut giriş oturumunun halen geçerli olup olmadığını kontrol eder.
+    """
+
+    if not token:
+        return False, {}
+
+    try:
+        response = requests.post(
+            f"{ACCESS_API_URL}/validate",
+            json={
+                "token": token
+            },
+            timeout=15
+        )
+
+        data = response.json()
+
+        if response.status_code == 200 and data.get("success"):
+            return True, data
+
+        return False, data
+
+    except Exception:
+        return False, {}
+
+
+# =========================================================
+# LOGIN SESSION
+# =========================================================
+
+if "access_token" not in st.session_state:
+    st.session_state.access_token = ""
+
+if "customer_email" not in st.session_state:
+    st.session_state.customer_email = ""
+
+if "customer_package" not in st.session_state:
+    st.session_state.customer_package = ""
+
+if "access_checked" not in st.session_state:
+    st.session_state.access_checked = False
+
+
+# =========================================================
+# TOKEN KONTROLÜ
+# =========================================================
+
+if not st.session_state.access_checked:
+
+    st.session_state.access_checked = True
+
+    if st.session_state.access_token:
+
+        valid, access_data = check_session_token(
+            st.session_state.access_token
+        )
+
+        if valid:
+
+            st.session_state.customer_email = (
+                access_data.get("email", "")
+            )
+
+            st.session_state.customer_package = (
+                access_data.get("package", "PRO")
+            )
+
+            st.session_state.active_package = (
+                access_data.get("package", "PRO")
+            )
+
+        else:
+
+            st.session_state.access_token = ""
+            st.session_state.customer_email = ""
+            st.session_state.customer_package = ""
+
+
+# =========================================================
+# ERİŞİM KİLİDİ
+# =========================================================
+
+if not st.session_state.access_token:
+
+    st.markdown("""
+    <div style="
+        max-width:520px;
+        margin:110px auto 0 auto;
+        padding:42px;
+        background:#151f2b;
+        border:1px solid #2a394b;
+        border-radius:22px;
+    ">
+        <div style="
+            color:#ff6a00;
+            font-size:12px;
+            font-weight:800;
+            letter-spacing:2px;
+            margin-bottom:16px;
+        ">
+            SİSTEMİST IMAGE STUDIO
+        </div>
+
+        <h1 style="
+            color:#f4f7fb;
+            margin:0 0 12px 0;
+            font-size:34px;
+        ">
+            Hesabınıza giriş yapın
+        </h1>
+
+        <p style="
+            color:#8b9aab;
+            line-height:1.7;
+            margin-bottom:28px;
+        ">
+            Image Studio'yu kullanabilmek için satın alma
+            işleminizde kullandığınız e-posta adresi ve
+            erişim kodunuzla giriş yapın.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    with st.form("systemist_login_form"):
+
+        login_email = st.text_input(
+            "E-posta adresiniz",
+            placeholder="ornek@email.com"
+        )
+
+        login_code = st.text_input(
+            "Erişim kodunuz",
+            type="password",
+            placeholder="Erişim kodunuzu girin"
+        )
+
+        login_submit = st.form_submit_button(
+            "IMAGE STUDIO'YA GİR"
+        )
+
+    if login_submit:
+
+        if not login_email or not login_code:
+
+            st.error(
+                "Lütfen e-posta adresinizi ve erişim kodunuzu girin."
+            )
+
+        else:
+
+            with st.spinner("Erişim kontrol ediliyor..."):
+
+                success, login_data = validate_access(
+                    login_email,
+                    login_code
+                )
+
+            if success:
+
+                st.session_state.access_token = (
+                    login_data.get("token", "")
+                )
+
+                st.session_state.customer_email = (
+                    login_data.get("email", login_email)
+                )
+
+                st.session_state.customer_package = (
+                    login_data.get("package", "PRO")
+                )
+
+                st.session_state.active_package = (
+                    login_data.get("package", "PRO")
+                )
+
+                st.success("Giriş başarılı. Image Studio açılıyor...")
+
+                time.sleep(0.7)
+
+                st.rerun()
+
+            else:
+
+                st.error(
+                    login_data.get(
+                        "message",
+                        "Erişim bilgileri doğrulanamadı."
+                    )
+                )
+
+    st.stop()
 
 # =========================================================
 # GLOBAL CSS
