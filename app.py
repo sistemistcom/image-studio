@@ -236,7 +236,7 @@ Image Studio'yu kullanabilmek için satın alma işleminizde kullandığınız e
             "IMAGE STUDIO'YA GİR"
         )
 
-    if login_submit:
+if login_submit:
 
     if not login_email or not login_code:
 
@@ -253,38 +253,46 @@ Image Studio'yu kullanabilmek için satın alma işleminizde kullandığınız e
                 login_code
             )
 
-    if success:
+        if success:
 
             st.session_state.access_token = login_data.get(
-                "token", ""
+                "token",
+                ""
             )
 
             st.session_state.customer_email = login_data.get(
-                "email", login_email
+                "email",
+                login_email
             )
 
             st.session_state.customer_package = login_data.get(
-                "package", "PRO"
+                "package",
+                "STARTER"
             )
 
             st.session_state.customer_months = login_data.get(
-                "months", 0
+                "months",
+                1
             )
 
             st.session_state.customer_start_date = login_data.get(
-                "start_date", ""
+                "start_date",
+                ""
             )
 
             st.session_state.customer_end_date = login_data.get(
-                "end_date", ""
+                "end_date",
+                ""
             )
 
             st.session_state.customer_remaining_days = login_data.get(
-                "remaining_days", 0
+                "remaining_days",
+                0
             )
 
             st.session_state.active_package = login_data.get(
-                "package", "PRO"
+                "package",
+                "STARTER"
             )
 
             st.session_state.access_checked = True
@@ -292,9 +300,12 @@ Image Studio'yu kullanabilmek için satın alma işleminizde kullandığınız e
             st.success("Giriş başarılı. Image Studio açılıyor...")
 
             time.sleep(0.7)
+
             st.rerun()
 
-    else:
+        else:
+
+            st.session_state.access_checked = False
 
             st.error(
                 login_data.get(
