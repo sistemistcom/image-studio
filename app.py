@@ -138,23 +138,9 @@ if "customer_email" not in st.session_state:
 if "customer_package" not in st.session_state:
     st.session_state.customer_package = ""
 
-if "customer_months" not in st.session_state:
-    st.session_state.customer_months = 0
-
-if "customer_start_date" not in st.session_state:
-    st.session_state.customer_start_date = ""
-
-if "customer_end_date" not in st.session_state:
-    st.session_state.customer_end_date = ""
-
-if "customer_remaining_days" not in st.session_state:
-    st.session_state.customer_remaining_days = 0
-
-if "active_package" not in st.session_state:
-    st.session_state.active_package = ""
-    
 if "access_checked" not in st.session_state:
     st.session_state.access_checked = False
+
 
 # =========================================================
 # TOKEN KONTROLÜ
@@ -202,133 +188,91 @@ if not st.session_state.access_checked:
 if not st.session_state.access_token:
 
     st.markdown("""
-    <style>
+<div style="max-width:520px; margin:110px auto 25px auto; padding:42px; background:#151f2b; border:1px solid #2a394b; border-radius:22px;">
 
-    [data-testid="stSidebar"] {
-        display: none !important;
-    }
+<div style="color:#ff6a00; font-size:12px; font-weight:800; letter-spacing:2px; margin-bottom:16px;">
+SİSTEMİST IMAGE STUDIO
+</div>
 
-    [data-testid="stSidebarNav"] {
-        display: none !important;
-    }
+<h1 style="color:#f4f7fb; margin:0 0 12px 0; font-size:34px;">
+Hesabınıza giriş yapın
+</h1>
 
-    [data-testid="stAppViewContainer"] {
-        background: #0b1119 !important;
-    }
+<p style="color:#8b9aab; line-height:1.7; margin-bottom:0;">
+Image Studio'yu kullanabilmek için satın alma işleminizde kullandığınız e-posta adresi ve erişim kodunuzla giriş yapın.
+</p>
 
-    </style>
-    """, unsafe_allow_html=True)
+</div>
+""", unsafe_allow_html=True)
 
-    st.markdown("""
-    <div style="max-width:520px; margin:110px auto 25px auto; padding:42px; background:#151f2b; border:1px solid #2a394b; border-radius:22px;">
+    with st.form("systemist_login_form"):
 
-        <div style="color:#ff6a00; font-size:12px; font-weight:800; letter-spacing:2px; margin-bottom:16px;">
-        SİSTEMİST IMAGE STUDIO
-        </div>
-
-        <h1 style="color:#f4f7fb; margin:0 0 12px 0; font-size:34px;">
-        Hesabınıza giriş yapın
-        </h1>
-
-        <p style="color:#8b9aab; line-height:1.7; margin-bottom:0;">
-        Image Studio'yu kullanabilmek için satın alma işleminizde kullandığınız e-posta adresi ve erişim kodunuzla giriş yapın.
-        </p>
-
-    </div>
-    """, unsafe_allow_html=True)
-with st.form("systemist_login_form"):
-
-    login_email = st.text_input(
-        "E-posta adresiniz",
-        placeholder="ornek@email.com"
-    )
-
-    login_code = st.text_input(
-        "Erişim kodunuz",
-        type="password",
-        placeholder="Erişim kodunuzu girin"
-    )
-
-    login_submit = st.form_submit_button(
-        "IMAGE STUDIO'YA GİR"
-    )
-
-
-if login_submit:
-
-    if not login_email or not login_code:
-
-        st.error(
-            "Lütfen e-posta adresinizi ve erişim kodunuzu girin."
+        login_email = st.text_input(
+            "E-posta adresiniz",
+            placeholder="ornek@email.com"
         )
 
-    else:
+        login_code = st.text_input(
+            "Erişim kodunuz",
+            type="password",
+            placeholder="Erişim kodunuzu girin"
+        )
 
-        with st.spinner("Erişim kontrol ediliyor..."):
+        login_submit = st.form_submit_button(
+            "IMAGE STUDIO'YA GİR"
+        )
 
-            success, login_data = validate_access(
-                login_email,
-                login_code
+    if login_submit:
+
+        if not login_email or not login_code:
+
+            st.error(
+                "Lütfen e-posta adresinizi ve erişim kodunuzu girin."
             )
-
-        if success:
-
-            st.session_state.access_token = login_data.get(
-                "token",
-                ""
-            )
-
-            st.session_state.customer_email = login_data.get(
-                "email",
-                login_email
-            )
-
-            st.session_state.customer_package = login_data.get(
-                "package",
-                "STARTER"
-            )
-
-            st.session_state.customer_months = login_data.get(
-                "months",
-                1
-            )
-
-            st.session_state.customer_start_date = login_data.get(
-                "start_date",
-                ""
-            )
-
-            st.session_state.customer_end_date = login_data.get(
-                "end_date",
-                ""
-            )
-
-            st.session_state.customer_remaining_days = login_data.get(
-                "remaining_days",
-                0
-            )
-
-            st.session_state.active_package = login_data.get(
-                "package",
-                "STARTER"
-            )
-
-            st.session_state.access_checked = True
-
-            st.success("Giriş başarılı. Image Studio açılıyor...")
-
-            time.sleep(0.7)
-
-            st.rerun()
 
         else:
 
-            st.error(
-                login_data.get(
-                    "message",
-                    "Erişim bilgileriniz doğrulanamadı."
+            with st.spinner("Erişim kontrol ediliyor..."):
+
+                success, login_data = validate_access(
+                    login_email,
+                    login_code
                 )
-            )
+
+            if success:
+
+                st.session_state.access_token = login_data.get(
+                    "token", ""
+                )
+
+                st.session_state.customer_email = login_data.get(
+                    "email", login_email
+                )
+
+                st.session_state.customer_package = login_data.get(
+                    "package", "PRO"
+                )
+
+                st.session_state.active_package = login_data.get(
+                    "package", "PRO"
+                )
+
+                st.success("Giriş başarılı. Image Studio açılıyor...")
+
+                time.sleep(0.7)
+                st.rerun()
+
+            else:
+
+                st.error(
+                    login_data.get(
+                        "message",
+                        "Erişim bilgileri doğrulanamadı."
+                    )
+                )
+
+    st.stop()
+
 # =========================================================
 # GLOBAL CSS
 # =========================================================
