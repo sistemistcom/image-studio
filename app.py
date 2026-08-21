@@ -253,7 +253,7 @@ Image Studio'yu kullanabilmek için satın alma işleminizde kullandığınız e
                     login_code
                 )
 
-                 if success:
+    if success:
 
             st.session_state.access_token = login_data.get(
                 "token", ""
