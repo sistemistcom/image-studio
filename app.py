@@ -294,7 +294,7 @@ Image Studio'yu kullanabilmek için satın alma işleminizde kullandığınız e
             time.sleep(0.7)
             st.rerun()
 
-        else:
+    else:
 
             st.error(
                 login_data.get(
