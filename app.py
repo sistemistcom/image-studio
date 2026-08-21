@@ -138,8 +138,20 @@ if "customer_email" not in st.session_state:
 if "customer_package" not in st.session_state:
     st.session_state.customer_package = ""
 
-if "access_checked" not in st.session_state:
-    st.session_state.access_checked = False
+if "customer_months" not in st.session_state:
+    st.session_state.customer_months = 0
+
+if "customer_start_date" not in st.session_state:
+    st.session_state.customer_start_date = ""
+
+if "customer_end_date" not in st.session_state:
+    st.session_state.customer_end_date = ""
+
+if "customer_remaining_days" not in st.session_state:
+    st.session_state.customer_remaining_days = 0
+
+if "active_package" not in st.session_state:
+    st.session_state.active_package = ""
 
 
 # =========================================================
