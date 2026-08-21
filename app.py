@@ -138,21 +138,6 @@ if "customer_email" not in st.session_state:
 if "customer_package" not in st.session_state:
     st.session_state.customer_package = ""
 
-if "customer_months" not in st.session_state:
-    st.session_state.customer_months = 0
-
-if "customer_start_date" not in st.session_state:
-    st.session_state.customer_start_date = ""
-
-if "customer_end_date" not in st.session_state:
-    st.session_state.customer_end_date = ""
-
-if "customer_remaining_days" not in st.session_state:
-    st.session_state.customer_remaining_days = 0
-
-if "active_package" not in st.session_state:
-    st.session_state.active_package = ""
-
 if "access_checked" not in st.session_state:
     st.session_state.access_checked = False
 
@@ -174,52 +159,15 @@ if not st.session_state.access_checked:
         if valid:
 
             st.session_state.customer_email = (
-                access_data.get(
-                    "email",
-                    st.session_state.customer_email
-                )
+                access_data.get("email", "")
             )
 
             st.session_state.customer_package = (
-                access_data.get(
-                    "package",
-                    st.session_state.customer_package
-                )
-            )
-
-            st.session_state.customer_months = (
-                access_data.get(
-                    "months",
-                    st.session_state.customer_months
-                )
-            )
-
-            st.session_state.customer_start_date = (
-                access_data.get(
-                    "start_date",
-                    st.session_state.customer_start_date
-                )
-            )
-
-            st.session_state.customer_end_date = (
-                access_data.get(
-                    "end_date",
-                    st.session_state.customer_end_date
-                )
-            )
-
-            st.session_state.customer_remaining_days = (
-                access_data.get(
-                    "remaining_days",
-                    st.session_state.customer_remaining_days
-                )
+                access_data.get("package", "PRO")
             )
 
             st.session_state.active_package = (
-                access_data.get(
-                    "package",
-                    st.session_state.customer_package
-                )
+                access_data.get("package", "PRO")
             )
 
         else:
@@ -227,12 +175,11 @@ if not st.session_state.access_checked:
             st.session_state.access_token = ""
             st.session_state.customer_email = ""
             st.session_state.customer_package = ""
-            st.session_state.customer_months = 0
-            st.session_state.customer_start_date = ""
-            st.session_state.customer_end_date = ""
-            st.session_state.customer_remaining_days = 0
-            st.session_state.active_package = ""
 
+
+# =========================================================
+# ERİŞİM KİLİDİ
+# =========================================================
 
 # =========================================================
 # ERİŞİM KİLİDİ
@@ -275,7 +222,6 @@ Image Studio'yu kullanabilmek için satın alma işleminizde kullandığınız e
             "IMAGE STUDIO'YA GİR"
         )
 
-
     if login_submit:
 
         if not login_email or not login_code:
@@ -296,56 +242,24 @@ Image Studio'yu kullanabilmek için satın alma işleminizde kullandığınız e
             if success:
 
                 st.session_state.access_token = login_data.get(
-                    "token",
-                    ""
+                    "token", ""
                 )
 
                 st.session_state.customer_email = login_data.get(
-                    "email",
-                    login_email
+                    "email", login_email
                 )
 
                 st.session_state.customer_package = login_data.get(
-                    "package",
-                    "STARTER"
-                )
-
-                st.session_state.customer_months = login_data.get(
-                    "months",
-                    login_data.get(
-                        "duration",
-                        0
-                    )
-                )
-
-                st.session_state.customer_start_date = login_data.get(
-                    "start_date",
-                    ""
-                )
-
-                st.session_state.customer_end_date = login_data.get(
-                    "end_date",
-                    ""
-                )
-
-                st.session_state.customer_remaining_days = login_data.get(
-                    "remaining_days",
-                    0
+                    "package", "PRO"
                 )
 
                 st.session_state.active_package = login_data.get(
-                    "package",
-                    "STARTER"
+                    "package", "PRO"
                 )
 
-                st.session_state.access_checked = True
-
-                st.success(
-                    "Giriş başarılı. Image Studio açılıyor..."
-                )
+                st.success("Giriş başarılı. Image Studio açılıyor...")
 
                 time.sleep(0.7)
-
                 st.rerun()
 
             else:
@@ -353,9 +267,11 @@ Image Studio'yu kullanabilmek için satın alma işleminizde kullandığınız e
                 st.error(
                     login_data.get(
                         "message",
-                        "Erişim bilgileriniz doğrulanamadı."
+                        "Erişim bilgileri doğrulanamadı."
                     )
                 )
+
+    st.stop()
 
 # =========================================================
 # GLOBAL CSS
