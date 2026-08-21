@@ -1389,7 +1389,8 @@ with st.sidebar:
 # =========================================================
 # DASHBOARD
 # =========================================================
-
+if not st.session_state.access_checked:
+    st.stop()
 if st.session_state.current_page == "Dashboard":
 
     page_header(
