@@ -183,44 +183,23 @@ if not st.session_state.access_checked:
 
 if not st.session_state.access_token:
 
-    st.markdown("""
-    <div style="
-        max-width:520px;
-        margin:110px auto 0 auto;
-        padding:42px;
-        background:#151f2b;
-        border:1px solid #2a394b;
-        border-radius:22px;
-    ">
-        <div style="
-            color:#ff6a00;
-            font-size:12px;
-            font-weight:800;
-            letter-spacing:2px;
-            margin-bottom:16px;
-        ">
-            SİSTEMİST IMAGE STUDIO
-        </div>
+   st.markdown("""
+<div style="max-width:520px; margin:110px auto 25px auto; padding:42px; background:#151f2b; border:1px solid #2a394b; border-radius:22px;">
 
-        <h1 style="
-            color:#f4f7fb;
-            margin:0 0 12px 0;
-            font-size:34px;
-        ">
-            Hesabınıza giriş yapın
-        </h1>
+<div style="color:#ff6a00; font-size:12px; font-weight:800; letter-spacing:2px; margin-bottom:16px;">
+SİSTEMİST IMAGE STUDIO
+</div>
 
-        <p style="
-            color:#8b9aab;
-            line-height:1.7;
-            margin-bottom:28px;
-        ">
-            Image Studio'yu kullanabilmek için satın alma
-            işleminizde kullandığınız e-posta adresi ve
-            erişim kodunuzla giriş yapın.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+<h1 style="color:#f4f7fb; margin:0 0 12px 0; font-size:34px;">
+Hesabınıza giriş yapın
+</h1>
+
+<p style="color:#8b9aab; line-height:1.7; margin-bottom:0;">
+Image Studio'yu kullanabilmek için satın alma işleminizde kullandığınız e-posta adresi ve erişim kodunuzla giriş yapın.
+</p>
+
+</div>
+""", unsafe_allow_html=True)
 
     with st.form("systemist_login_form"):
 
