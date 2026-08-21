@@ -181,9 +181,13 @@ if not st.session_state.access_checked:
 # ERİŞİM KİLİDİ
 # =========================================================
 
+# =========================================================
+# ERİŞİM KİLİDİ
+# =========================================================
+
 if not st.session_state.access_token:
 
-   st.markdown("""
+    st.markdown("""
 <div style="max-width:520px; margin:110px auto 25px auto; padding:42px; background:#151f2b; border:1px solid #2a394b; border-radius:22px;">
 
 <div style="color:#ff6a00; font-size:12px; font-weight:800; letter-spacing:2px; margin-bottom:16px;">
@@ -237,26 +241,25 @@ Image Studio'yu kullanabilmek için satın alma işleminizde kullandığınız e
 
             if success:
 
-                st.session_state.access_token = (
-                    login_data.get("token", "")
+                st.session_state.access_token = login_data.get(
+                    "token", ""
                 )
 
-                st.session_state.customer_email = (
-                    login_data.get("email", login_email)
+                st.session_state.customer_email = login_data.get(
+                    "email", login_email
                 )
 
-                st.session_state.customer_package = (
-                    login_data.get("package", "PRO")
+                st.session_state.customer_package = login_data.get(
+                    "package", "PRO"
                 )
 
-                st.session_state.active_package = (
-                    login_data.get("package", "PRO")
+                st.session_state.active_package = login_data.get(
+                    "package", "PRO"
                 )
 
                 st.success("Giriş başarılı. Image Studio açılıyor...")
 
                 time.sleep(0.7)
-
                 st.rerun()
 
             else:
