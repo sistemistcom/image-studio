@@ -253,7 +253,7 @@ Image Studio'yu kullanabilmek için satın alma işleminizde kullandığınız e
                     login_code
                 )
 
-            if success:
+           if success:
 
     st.session_state.access_token = login_data.get(
         "token", ""
@@ -294,17 +294,15 @@ Image Studio'yu kullanabilmek için satın alma işleminizde kullandığınız e
     time.sleep(0.7)
 
     st.rerun()
-            else:
 
-                st.error(
-                    login_data.get(
-                        "message",
-                        "Erişim bilgileri doğrulanamadı."
-                    )
-                )
+else:
 
-    st.stop()
-
+    st.error(
+        login_data.get(
+            "message",
+            "Erişim bilgileri doğrulanamadı."
+        )
+    )
 # =========================================================
 # GLOBAL CSS
 # =========================================================
