@@ -255,27 +255,45 @@ Image Studio'yu kullanabilmek için satın alma işleminizde kullandığınız e
 
             if success:
 
-                st.session_state.access_token = login_data.get(
-                    "token", ""
-                )
+    st.session_state.access_token = login_data.get(
+        "token", ""
+    )
 
-                st.session_state.customer_email = login_data.get(
-                    "email", login_email
-                )
+    st.session_state.customer_email = login_data.get(
+        "email", login_email
+    )
 
-                st.session_state.customer_package = login_data.get(
-                    "package", "PRO"
-                )
+    st.session_state.customer_package = login_data.get(
+        "package", "Starter"
+    )
 
-                st.session_state.active_package = login_data.get(
-                    "package", "PRO"
-                )
+    st.session_state.customer_months = int(
+        login_data.get("months", 0) or 0
+    )
 
-                st.success("Giriş başarılı. Image Studio açılıyor...")
+    st.session_state.customer_start_date = login_data.get(
+        "start_date", ""
+    )
 
-                time.sleep(0.7)
-                st.rerun()
+    st.session_state.customer_end_date = login_data.get(
+        "end_date", ""
+    )
 
+    st.session_state.customer_remaining_days = int(
+        login_data.get("remaining_days", 0) or 0
+    )
+
+    st.session_state.active_package = login_data.get(
+        "package", "Starter"
+    )
+
+    st.session_state.access_checked = True
+
+    st.success("Giriş başarılı. Image Studio açılıyor...")
+
+    time.sleep(0.7)
+
+    st.rerun()
             else:
 
                 st.error(
