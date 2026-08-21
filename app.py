@@ -1346,20 +1346,6 @@ with st.sidebar:
     if st.button("? Yardım Merkezi", key="nav_help"):
         go_to("Yardım Merkezi")
 
-    if st.button("◆ Paket & Lisans", key="nav_package"):
-        go_to("Paket & Lisans")
-
-    sidebar_status_html = (
-        '<div class="sidebar-wrap sidebar-bottom">'
-        '<div class="sidebar-status">'
-        '<div class="status-dot"></div>'
-        '<div><div class="status-text">Sistem Aktif</div>'
-        '<div class="status-sub">Image Studio hizmete hazır</div></div>'
-        '</div>'
-        '</div>'
-    )
-    st.markdown(sidebar_status_html, unsafe_allow_html=True)
-
 
 # =========================================================
 # DASHBOARD
