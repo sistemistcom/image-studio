@@ -219,22 +219,23 @@ Image Studio'yu kullanabilmek için satın alma işleminizde kullandığınız e
 </div>
 """, unsafe_allow_html=True)
 
-    with st.form("systemist_login_form"):
+with st.form("systemist_login_form"):
 
-        login_email = st.text_input(
-            "E-posta adresiniz",
-            placeholder="ornek@email.com"
-        )
+    login_email = st.text_input(
+        "E-posta adresiniz",
+        placeholder="ornek@email.com"
+    )
 
-        login_code = st.text_input(
-            "Erişim kodunuz",
-            type="password",
-            placeholder="Erişim kodunuzu girin"
-        )
+    login_code = st.text_input(
+        "Erişim kodunuz",
+        type="password",
+        placeholder="Erişim kodunuzu girin"
+    )
 
-        login_submit = st.form_submit_button(
-            "IMAGE STUDIO'YA GİR"
-        )
+    login_submit = st.form_submit_button(
+        "IMAGE STUDIO'YA GİR"
+    )
+
 
 if login_submit:
 
@@ -305,12 +306,10 @@ if login_submit:
 
         else:
 
-            st.session_state.access_checked = False
-
             st.error(
                 login_data.get(
                     "message",
-                    "Erişim bilgileri doğrulanamadı."
+                    "Erişim bilgileriniz doğrulanamadı."
                 )
             )
 # =========================================================
