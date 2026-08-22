@@ -58,6 +58,48 @@ DEFAULTS = {
 for key, value in DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = value
+
+
+# =========================================================
+# SİSTEMİST CLOUD R2 OTOMATİK BAĞLANTI
+# Mevcut R2 kodlarına dokunmadan Sistemist R2 bilgilerini
+# Streamlit Secrets veya sunucu ortam değişkenlerinden yükler.
+# =========================================================
+
+def _systemist_r2_value(name):
+    env_name = f"SISTEMIST_R2_{name.upper()}"
+
+    value = os.getenv(env_name, "").strip()
+    if value:
+        return value
+
+    try:
+        if "r2" in st.secrets:
+            value = str(st.secrets["r2"].get(name.lower(), "")).strip()
+            if value:
+                return value
+
+        value = str(st.secrets.get(env_name, "")).strip()
+        if value:
+            return value
+    except Exception:
+        pass
+
+    return ""
+
+
+_SYSTEMIST_R2_VALUES = {
+    "r2_endpoint": _systemist_r2_value("endpoint"),
+    "r2_access_key": _systemist_r2_value("access_key"),
+    "r2_secret_key": _systemist_r2_value("secret_key"),
+    "r2_bucket": _systemist_r2_value("bucket"),
+    "r2_public_url": _systemist_r2_value("public_url"),
+    "r2_region": _systemist_r2_value("region"),
+}
+
+for _r2_key, _r2_value in _SYSTEMIST_R2_VALUES.items():
+    if _r2_value and not str(st.session_state.get(_r2_key, "")).strip():
+        st.session_state[_r2_key] = _r2_value
 # =========================================================
 # SİSTEMİST ERİŞİM KONTROLÜ
 # =========================================================
