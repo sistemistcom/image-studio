@@ -17,7 +17,6 @@ from botocore.config import Config
 from botocore.exceptions import ClientError, BotoCoreError
 
 from PIL import Image, ImageOps
-from rembg import remove, new_session
 from openpyxl import load_workbook, Workbook
 
 import streamlit as st
@@ -36,12 +35,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-
-@st.cache_resource(show_spinner=False)
-def get_rembg_session():
-    """Amazon beyaz arka plan işlemlerinde kullanılacak AI oturumunu önbelleğe alır."""
-    return new_session("u2netp")
 
 
 # =========================================================
@@ -66,6 +59,311 @@ for key, value in DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = value
 
+
+# =========================================================
+# SİSTEMİST CLOUD R2 OTOMATİK BAĞLANTI
+# Mevcut R2 kodlarına dokunmadan Sistemist R2 bilgilerini
+# Streamlit Secrets veya sunucu ortam değişkenlerinden yükler.
+# =========================================================
+
+def _systemist_r2_value(name):
+    env_name = f"SISTEMIST_R2_{name.upper()}"
+
+    value = os.getenv(env_name, "").strip()
+    if value:
+        return value
+
+    try:
+        if "r2" in st.secrets:
+            value = str(st.secrets["r2"].get(name.lower(), "")).strip()
+            if value:
+                return value
+
+        value = str(st.secrets.get(env_name, "")).strip()
+        if value:
+            return value
+    except Exception:
+        pass
+
+    return ""
+
+
+_SYSTEMIST_R2_VALUES = {
+    "r2_endpoint": _systemist_r2_value("endpoint"),
+    "r2_access_key": _systemist_r2_value("access_key"),
+    "r2_secret_key": _systemist_r2_value("secret_key"),
+    "r2_bucket": _systemist_r2_value("bucket"),
+    "r2_public_url": _systemist_r2_value("public_url"),
+    "r2_region": _systemist_r2_value("region"),
+}
+
+for _r2_key, _r2_value in _SYSTEMIST_R2_VALUES.items():
+    if _r2_value and not str(st.session_state.get(_r2_key, "")).strip():
+        st.session_state[_r2_key] = _r2_value
+# =========================================================
+# SİSTEMİST ERİŞİM KONTROLÜ
+# =========================================================
+
+ACCESS_API_URL = os.getenv(
+    "SISTEMIST_ACCESS_API_URL",
+    "https://sistemist.com/wp-json/sistemist/v1"
+)
+
+
+def validate_access(email, access_code):
+    """
+    WordPress / WooCommerce üzerinden müşterinin
+    satın alma ve erişim durumunu kontrol eder.
+    """
+
+    try:
+        response = requests.post(
+            f"{ACCESS_API_URL}/login",
+            json={
+                "email": email.strip().lower(),
+                "access_code": access_code.strip()
+            },
+            timeout=15
+        )
+
+        data = response.json()
+
+        if response.status_code == 200 and data.get("success"):
+            return True, data
+
+        return False, data
+
+    except Exception as error:
+        return False, {
+            "message": f"Sunucu bağlantısı kurulamadı: {str(error)}"
+        }
+
+
+def check_session_token(token):
+    """
+    Mevcut giriş oturumunun halen geçerli olup olmadığını kontrol eder.
+    """
+
+    if not token:
+        return False, {}
+
+    try:
+        response = requests.post(
+            f"{ACCESS_API_URL}/validate",
+            json={
+                "token": token
+            },
+            timeout=15
+        )
+
+        data = response.json()
+
+        if response.status_code == 200 and data.get("success"):
+            return True, data
+
+        return False, data
+
+    except Exception:
+        return False, {}
+
+
+# =========================================================
+# LOGIN SESSION
+# =========================================================
+
+if "access_token" not in st.session_state:
+    st.session_state.access_token = ""
+
+if "customer_email" not in st.session_state:
+    st.session_state.customer_email = ""
+
+if "customer_package" not in st.session_state:
+    st.session_state.customer_package = ""
+
+# Erişim süresi bilgileri - mevcut yapıya eklenmiştir
+if "customer_months" not in st.session_state:
+    st.session_state.customer_months = 0
+
+if "customer_start_date" not in st.session_state:
+    st.session_state.customer_start_date = ""
+
+if "customer_end_date" not in st.session_state:
+    st.session_state.customer_end_date = ""
+
+if "customer_remaining_days" not in st.session_state:
+    st.session_state.customer_remaining_days = 0
+
+if "access_checked" not in st.session_state:
+    st.session_state.access_checked = False
+
+
+# =========================================================
+# TOKEN KONTROLÜ
+# =========================================================
+
+if not st.session_state.access_checked:
+
+    st.session_state.access_checked = True
+
+    if st.session_state.access_token:
+
+        valid, access_data = check_session_token(
+            st.session_state.access_token
+        )
+
+        if valid:
+
+            st.session_state.customer_email = (
+                access_data.get("email", "")
+            )
+
+            st.session_state.customer_package = (
+                access_data.get("package", "PRO")
+            )
+
+            st.session_state.active_package = (
+                access_data.get("package", "PRO")
+            )
+
+            # Erişim süresi bilgilerini mevcut oturuma ekle
+            st.session_state.customer_months = (
+                access_data.get("months", st.session_state.customer_months)
+            )
+
+            st.session_state.customer_start_date = (
+                access_data.get("start_date", st.session_state.customer_start_date)
+            )
+
+            st.session_state.customer_end_date = (
+                access_data.get("end_date", st.session_state.customer_end_date)
+            )
+
+            st.session_state.customer_remaining_days = (
+                access_data.get(
+                    "remaining_days",
+                    st.session_state.customer_remaining_days
+                )
+            )
+
+        else:
+
+            st.session_state.access_token = ""
+            st.session_state.customer_email = ""
+            st.session_state.customer_package = ""
+
+
+# =========================================================
+# ERİŞİM KİLİDİ
+# =========================================================
+
+# =========================================================
+# ERİŞİM KİLİDİ
+# =========================================================
+
+if not st.session_state.access_token:
+
+    st.markdown("""
+<div style="max-width:520px; margin:110px auto 25px auto; padding:42px; background:#151f2b; border:1px solid #2a394b; border-radius:22px;">
+
+<div style="color:#ff6a00; font-size:12px; font-weight:800; letter-spacing:2px; margin-bottom:16px;">
+SİSTEMİST IMAGE STUDIO
+</div>
+
+<h1 style="color:#f4f7fb; margin:0 0 12px 0; font-size:34px;">
+Hesabınıza giriş yapın
+</h1>
+
+<p style="color:#8b9aab; line-height:1.7; margin-bottom:0;">
+Image Studio'yu kullanabilmek için satın alma işleminizde kullandığınız e-posta adresi ve erişim kodunuzla giriş yapın.
+</p>
+
+</div>
+""", unsafe_allow_html=True)
+
+    with st.form("systemist_login_form"):
+
+        login_email = st.text_input(
+            "E-posta adresiniz",
+            placeholder="ornek@email.com"
+        )
+
+        login_code = st.text_input(
+            "Erişim kodunuz",
+            type="password",
+            placeholder="Erişim kodunuzu girin"
+        )
+
+        login_submit = st.form_submit_button(
+            "IMAGE STUDIO'YA GİR"
+        )
+
+    if login_submit:
+
+        if not login_email or not login_code:
+
+            st.error(
+                "Lütfen e-posta adresinizi ve erişim kodunuzu girin."
+            )
+
+        else:
+
+            with st.spinner("Erişim kontrol ediliyor..."):
+
+                success, login_data = validate_access(
+                    login_email,
+                    login_code
+                )
+
+            if success:
+
+                st.session_state.access_token = login_data.get(
+                    "token", ""
+                )
+
+                st.session_state.customer_email = login_data.get(
+                    "email", login_email
+                )
+
+                st.session_state.customer_package = login_data.get(
+                    "package", "PRO"
+                )
+
+                st.session_state.active_package = login_data.get(
+                    "package", "PRO"
+                )
+
+                # Satın alınan paketin süre bilgilerini kaydet
+                st.session_state.customer_months = login_data.get(
+                    "months", 0
+                )
+
+                st.session_state.customer_start_date = login_data.get(
+                    "start_date", ""
+                )
+
+                st.session_state.customer_end_date = login_data.get(
+                    "end_date", ""
+                )
+
+                st.session_state.customer_remaining_days = login_data.get(
+                    "remaining_days", 0
+                )
+
+                st.success("Giriş başarılı. Image Studio açılıyor...")
+
+                time.sleep(0.7)
+                st.rerun()
+
+            else:
+
+                st.error(
+                    login_data.get(
+                        "message",
+                        "Erişim bilgileri doğrulanamadı."
+                    )
+                )
+
+    st.stop()
 
 # =========================================================
 # GLOBAL CSS
@@ -306,7 +604,7 @@ h1 {
     color: #f5f7fa !important;
 }
 
-p, span, label {
+p, label {
     font-family: 'Inter', sans-serif !important;
 }
 
@@ -353,12 +651,15 @@ p, span, label {
 
 .hero-title {
     color: #f5f7fb;
-    font-size: 35px;
+    font-size: clamp(28px, 3vw, 35px);
     font-weight: 700;
     letter-spacing: -.8px;
     margin: 0;
     position: relative;
     z-index: 2;
+    line-height: 1.18;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .hero-title span {
@@ -569,19 +870,43 @@ p, span, label {
 }
 
 
+.section-title {
+    color: #d9e3ee !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    margin: 12px 0 8px 0 !important;
+}
+
 /* ---------------------------------------------------------
    FILE UPLOADER
 --------------------------------------------------------- */
 
 [data-testid="stFileUploader"] {
-    background: #111a24;
-    border: 1px dashed #3a4d61;
-    border-radius: 16px;
-    padding: 15px;
+    background: #111a24 !important;
+    border: 1px dashed #3a4d61 !important;
+    border-radius: 16px !important;
+    padding: 15px !important;
 }
 
 [data-testid="stFileUploader"]:hover {
-    border-color: var(--orange);
+    border-color: var(--orange) !important;
+}
+
+/* Only the file-picker button: never allow it to inherit Streamlit's white secondary style */
+[data-testid="stFileUploader"] button,
+[data-testid="stFileUploader"] [data-testid="stBaseButton-secondary"] {
+    background: linear-gradient(135deg, #ff8a2a, #ff5b00) !important;
+    color: #ffffff !important;
+    border: 1px solid #ff7a18 !important;
+    border-radius: 10px !important;
+    font-weight: 700 !important;
+    opacity: 1 !important;
+}
+
+[data-testid="stFileUploader"] button *,
+[data-testid="stFileUploader"] [data-testid="stBaseButton-secondary"] * {
+    color: #ffffff !important;
+    fill: #ffffff !important;
 }
 
 
@@ -644,6 +969,24 @@ hr {
     font-size: 10px;
     letter-spacing: 1px;
     text-align: center;
+}
+
+.package-card{
+    min-height:245px;
+    display:flex;
+    flex-direction:column;
+    justify-content:flex-start;
+    margin-bottom:0!important;
+}
+.package-card .panel-title{
+    color:#f4f7fb!important;
+    font-size:28px!important;
+    line-height:1.25!important;
+    margin-top:14px!important;
+}
+.package-card .panel-subtitle{
+    margin-bottom:0!important;
+    color:#9aaabd!important;
 }
 
 </style>
@@ -1049,31 +1392,18 @@ def go_to(page):
 
 with st.sidebar:
 
-    st.markdown(
-        dedent("""
-        <div class="sidebar-wrap">
-
-            <div class="sidebar-brand">
-
-                <div class="brand-row">
-                    <div class="brand-symbol"></div>
-
-                    <div>
-                        <div class="brand-name">
-                            SİST<span>EM</span>İST
-                        </div>
-                    </div>
-                </div>
-
-                <div class="brand-version">
-                    IMAGE STUDIO WEB • V7.7 PRO
-                </div>
-
-            </div>
-        </div>
-        """),
-        unsafe_allow_html=True
+    sidebar_brand_html = (
+        '<div class="sidebar-wrap">'
+        '<div class="sidebar-brand">'
+        '<div class="brand-row">'
+        '<div class="brand-symbol"></div>'
+        '<div><div class="brand-name">SİST<span>EM</span>İST</div></div>'
+        '</div>'
+        '<div class="brand-version">IMAGE STUDIO WEB • V7.7 PRO</div>'
+        '</div>'
+        '</div>'
     )
+    st.markdown(sidebar_brand_html, unsafe_allow_html=True)
 
     st.markdown('<div class="nav-label">Ana Menü</div>', unsafe_allow_html=True)
 
@@ -1085,9 +1415,6 @@ with st.sidebar:
 
     if st.button("↗ Görsel → URL", key="nav_image_url"):
         go_to("Görsel → URL")
-
-    if st.button("⬜ Amazon Beyaz Arka Plan", key="nav_amazon_white"):
-        go_to("Amazon Beyaz Arka Plan")
 
     if st.button("◇ Toplu Dönüştürme", key="nav_batch"):
         go_to("Toplu Dönüştürme")
@@ -1110,24 +1437,6 @@ with st.sidebar:
 
     if st.button("? Yardım Merkezi", key="nav_help"):
         go_to("Yardım Merkezi")
-
-    if st.button("◆ Paket & Lisans", key="nav_package"):
-        go_to("Paket & Lisans")
-
-    st.markdown(
-        dedent("""
-        <div class="sidebar-wrap sidebar-bottom">
-            <div class="sidebar-status">
-                <div class="status-dot"></div>
-                <div>
-                    <div class="status-text">Sistem Aktif</div>
-                    <div class="status-sub">Image Studio hizmete hazır</div>
-                </div>
-            </div>
-        </div>
-        """),
-        unsafe_allow_html=True
-    )
 
 
 # =========================================================
@@ -1234,6 +1543,29 @@ if st.session_state.current_page == "Dashboard":
         )
 
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+    # Satın alınan paket erişim süresi - mevcut Dashboard'a eklenmiştir
+    if st.session_state.customer_end_date:
+
+        if st.session_state.customer_remaining_days > 0:
+            access_status = f"{st.session_state.customer_remaining_days} gün kaldı"
+        else:
+            access_status = "Süre bilgisi güncelleniyor"
+
+        st.markdown(
+            dedent(f"""
+            <div class="stat-card orange">
+                <div class="stat-icon">◷</div>
+                <div class="stat-label">Paket Süresi</div>
+                <div class="stat-value">{access_status}</div>
+                <div class="stat-sub">
+                    Başlangıç: {st.session_state.customer_start_date or "-"} &nbsp; • &nbsp;
+                    Bitiş: {st.session_state.customer_end_date}
+                </div>
+            </div>
+            """),
+            unsafe_allow_html=True
+        )
 
     engine1, engine2 = st.columns(2)
 
@@ -1883,206 +2215,6 @@ elif st.session_state.current_page == "Görsel → URL":
 
 
 # =========================================================
-# AMAZON WHITE BACKGROUND
-# =========================================================
-
-elif st.session_state.current_page == "Amazon Beyaz Arka Plan":
-
-    page_header(
-        "<span>Amazon Beyaz</span> Arka Plan",
-        "Ürün görsellerinizin arka planını otomatik olarak kaldırın ve saf beyaz (#FFFFFF) arka plan ile Amazon uyumlu hale getirin.",
-        "SİSTEMİST AMAZON IMAGE ENGINE"
-    )
-
-    st.markdown(
-        '<div class="section-title">Ürün görsellerinizi yükleyin</div>',
-        unsafe_allow_html=True
-    )
-
-    st.info(
-        "Görsellerin arka planı yapay zeka ile otomatik olarak kaldırılır. "
-        "Çıktı, tam beyaz (#FFFFFF) arka planlı yüksek kaliteli JPG olarak hazırlanır."
-    )
-
-    uploaded_amazon_images = st.file_uploader(
-        "Görselleri seçin",
-        type=["jpg", "jpeg", "png", "webp"],
-        accept_multiple_files=True,
-        key="amazon_white_uploader"
-    )
-
-    if uploaded_amazon_images:
-
-        st.success(
-            f"{len(uploaded_amazon_images)} görsel işlem için hazır."
-        )
-
-        preview_count = min(len(uploaded_amazon_images), 4)
-        preview_cols = st.columns(preview_count)
-
-        for index, uploaded_file in enumerate(uploaded_amazon_images[:preview_count]):
-
-            try:
-                uploaded_file.seek(0)
-                preview_image = Image.open(uploaded_file)
-                preview_image = ImageOps.exif_transpose(preview_image)
-
-                with preview_cols[index]:
-                    st.image(
-                        preview_image,
-                        caption=uploaded_file.name,
-                        use_container_width=True
-                    )
-
-            except Exception:
-                pass
-
-        if len(uploaded_amazon_images) > 4:
-            st.caption(
-                f"Önizlemede ilk 4 görsel gösteriliyor. Toplam {len(uploaded_amazon_images)} görsel işlenecek."
-            )
-
-    else:
-
-        st.info(
-            "JPG, JPEG, PNG veya WEBP formatındaki ürün görsellerinizi seçebilirsiniz."
-        )
-
-    if st.button(
-        "AMAZON BEYAZ ARKA PLAN OLUŞTUR",
-        key="start_amazon_white",
-        disabled=not uploaded_amazon_images,
-        use_container_width=True
-    ):
-
-        success_count = 0
-        failed_count = 0
-        zip_buffer = io.BytesIO()
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-
-        try:
-
-            with st.spinner("Yapay zeka modeli hazırlanıyor..."):
-                rembg_session = get_rembg_session()
-
-            with zipfile.ZipFile(
-                zip_buffer,
-                "w",
-                zipfile.ZIP_DEFLATED
-            ) as zip_file:
-
-                total_files = len(uploaded_amazon_images)
-
-                for index, uploaded_file in enumerate(uploaded_amazon_images):
-
-                    try:
-
-                        status_text.write(
-                            f"İşleniyor: {uploaded_file.name} ({index + 1}/{total_files})"
-                        )
-
-                        uploaded_file.seek(0)
-
-                        input_image = Image.open(uploaded_file)
-                        input_image = ImageOps.exif_transpose(input_image).convert("RGBA")
-
-                        # Ürünü arka plandan ayır.
-                        no_background = remove(
-                            input_image,
-                            session=rembg_session
-                        )
-
-                        # Saf Amazon beyazı: RGB(255, 255, 255) / #FFFFFF.
-                        white_background = Image.new(
-                            "RGBA",
-                            no_background.size,
-                            (255, 255, 255, 255)
-                        )
-
-                        final_image = Image.alpha_composite(
-                            white_background,
-                            no_background
-                        ).convert("RGB")
-
-                        output_buffer = io.BytesIO()
-
-                        final_image.save(
-                            output_buffer,
-                            format="JPEG",
-                            quality=95,
-                            optimize=True
-                        )
-
-                        original_name = Path(uploaded_file.name).stem
-                        output_name = f"{original_name}-amazon-beyaz.jpg"
-
-                        zip_file.writestr(
-                            output_name,
-                            output_buffer.getvalue()
-                        )
-
-                        success_count += 1
-
-                    except Exception as error:
-
-                        failed_count += 1
-
-                        st.warning(
-                            f"{uploaded_file.name} işlenemedi: {str(error)}"
-                        )
-
-                    progress_bar.progress(
-                        min((index + 1) / total_files, 1.0)
-                    )
-
-            zip_buffer.seek(0)
-            progress_bar.empty()
-            status_text.empty()
-
-            if success_count > 0:
-
-                add_history(
-                    "Amazon Beyaz Arka Plan",
-                    "Başarılı",
-                    f"{success_count} görsel beyaz arka plan ile hazırlandı",
-                    success_count
-                )
-
-                st.success(
-                    f"İşlem tamamlandı! {success_count} görsel Amazon beyaz arka plan ile hazırlandı."
-                )
-
-                st.download_button(
-                    "HAZIR GÖRSELLERİ ZIP OLARAK İNDİR",
-                    data=zip_buffer.getvalue(),
-                    file_name=(
-                        "sistemist-amazon-beyaz-arka-plan-"
-                        f"{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
-                    ),
-                    mime="application/zip",
-                    key="download_amazon_white_zip",
-                    use_container_width=True
-                )
-
-            if failed_count > 0:
-                st.warning(
-                    f"{failed_count} görsel işlenirken hata oluştu. Diğer görseller başarıyla hazırlandı."
-                )
-
-        except Exception as error:
-
-            progress_bar.empty()
-            status_text.empty()
-
-            st.error(
-                f"Amazon beyaz arka plan işlemi başlatılamadı: {str(error)}"
-            )
-
-    app_footer()
-
-
-# =========================================================
 # BATCH CONVERSION
 # =========================================================
 
@@ -2094,170 +2226,168 @@ elif st.session_state.current_page == "Toplu Dönüştürme":
         "SİSTEMİST BATCH ENGINE"
     )
 
+    # Önce işlem ayarlarını gösteriyoruz. Böylece kullanıcı dosya yüklemeden
+    # önce hangi işlemlerin yapılacağını açıkça görebilir.
+    st.markdown('<div class="section-title">Dönüştürme ayarları</div>', unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        batch_format = st.selectbox(
+            "Yeni format",
+            ["JPG", "PNG", "WEBP"],
+            key="batch_format"
+        )
+
+    with col2:
+        batch_size = st.selectbox(
+            "Yeni boyut",
+            [
+                "1200 × 1200 px",
+                "1200 × 1800 px",
+                "1000 × 1000 px",
+                "800 × 800 px",
+                "1920 × 1920 px",
+                "Orijinal Boyut"
+            ],
+            key="batch_size"
+        )
+
+    with col3:
+        batch_quality = st.slider(
+            "Kalite",
+            60,
+            100,
+            90,
+            key="batch_quality"
+        )
+
+    batch_fit = st.selectbox(
+        "Yerleşim yöntemi",
+        ["Sığdır", "Kırp"],
+        key="batch_fit"
+    )
+
+    st.markdown('<div class="section-title">Görselleri yükleyin</div>', unsafe_allow_html=True)
+
     uploaded_images = st.file_uploader(
         "Görselleri seçin",
-        type=[
-            "jpg", "jpeg", "png",
-            "webp", "gif", "bmp"
-        ],
+        type=["jpg", "jpeg", "png", "webp", "gif", "bmp"],
         accept_multiple_files=True,
         key="batch_images"
     )
 
     if uploaded_images:
+        st.success(f"{len(uploaded_images)} görsel seçildi. Ayarlarınıza göre dönüştürmeye hazır.")
+    else:
+        st.info("Önce dönüştürme ayarlarını belirleyin, ardından görsellerinizi seçin.")
 
-        st.success(
-            f"{len(uploaded_images)} görsel seçildi."
-        )
+    if st.button(
+        "TOPLU DÖNÜŞTÜRMEYİ BAŞLAT",
+        key="start_batch",
+        disabled=not uploaded_images
+    ):
 
-        col1, col2, col3 = st.columns(3)
+        if uploaded_images:
 
-        with col1:
+                target_size = get_target_size(
+                    batch_size
+                )
 
-            batch_format = st.selectbox(
-                "Yeni format",
-                ["JPG", "PNG", "WEBP"],
-                key="batch_format"
-            )
+                zip_buffer = io.BytesIO()
 
-        with col2:
+                success_count = 0
+                failed_count = 0
 
-            batch_size = st.selectbox(
-                "Yeni boyut",
-                [
-                    "1200 × 1200 px",
-                    "1200 × 1800 px",
-                    "1000 × 1000 px",
-                    "800 × 800 px",
-                    "1920 × 1920 px",
-                    "Orijinal Boyut"
-                ],
-                key="batch_size"
-            )
+                progress = st.progress(0)
 
-        with col3:
+                with zipfile.ZipFile(
+                    zip_buffer,
+                    "w",
+                    zipfile.ZIP_DEFLATED
+                ) as zip_file:
 
-            batch_quality = st.slider(
-                "Kalite",
-                60,
-                100,
-                90,
-                key="batch_quality"
-            )
+                    for index, uploaded_file in enumerate(
+                        uploaded_images
+                    ):
 
-        batch_fit = st.selectbox(
-            "Yerleşim yöntemi",
-            [
-                "Sığdır",
-                "Kırp"
-            ],
-            key="batch_fit"
-        )
+                        try:
 
-        if st.button(
-            "TOPLU DÖNÜŞTÜRMEYİ BAŞLAT",
-            key="start_batch"
-        ):
-
-            target_size = get_target_size(
-                batch_size
-            )
-
-            zip_buffer = io.BytesIO()
-
-            success_count = 0
-            failed_count = 0
-
-            progress = st.progress(0)
-
-            with zipfile.ZipFile(
-                zip_buffer,
-                "w",
-                zipfile.ZIP_DEFLATED
-            ) as zip_file:
-
-                for index, uploaded_file in enumerate(
-                    uploaded_images
-                ):
-
-                    try:
-
-                        image = Image.open(
-                            io.BytesIO(
-                                uploaded_file.getvalue()
+                            image = Image.open(
+                                io.BytesIO(
+                                    uploaded_file.getvalue()
+                                )
                             )
+
+                            image.load()
+
+                            processed_image = prepare_image(
+                                image,
+                                target_size,
+                                batch_fit
+                            )
+
+                            image_bytes, extension = save_image_to_buffer(
+                                processed_image,
+                                batch_format,
+                                batch_quality
+                            )
+
+                            base_name = clean_filename(
+                                Path(
+                                    uploaded_file.name
+                                ).stem
+                            )
+
+                            output_name = (
+                                f"{base_name}{extension}"
+                            )
+
+                            zip_file.writestr(
+                                output_name,
+                                image_bytes
+                            )
+
+                            success_count += 1
+
+                        except Exception:
+                            failed_count += 1
+
+                        progress.progress(
+                            (index + 1)
+                            / len(uploaded_images)
                         )
 
-                        image.load()
+                zip_buffer.seek(0)
 
-                        processed_image = prepare_image(
-                            image,
-                            target_size,
-                            batch_fit
-                        )
+                if success_count:
 
-                        image_bytes, extension = save_image_to_buffer(
-                            processed_image,
-                            batch_format,
-                            batch_quality
-                        )
-
-                        base_name = clean_filename(
-                            Path(
-                                uploaded_file.name
-                            ).stem
-                        )
-
-                        output_name = (
-                            f"{base_name}{extension}"
-                        )
-
-                        zip_file.writestr(
-                            output_name,
-                            image_bytes
-                        )
-
-                        success_count += 1
-
-                    except Exception:
-                        failed_count += 1
-
-                    progress.progress(
-                        (index + 1)
-                        / len(uploaded_images)
+                    add_history(
+                        "Toplu Dönüştürme",
+                        "Başarılı",
+                        f"{success_count} görsel dönüştürüldü",
+                        success_count
                     )
 
-            zip_buffer.seek(0)
+                    st.success(
+                        f"{success_count} görsel başarıyla dönüştürüldü."
+                    )
 
-            if success_count:
+                    st.download_button(
+                        "DÖNÜŞTÜRÜLEN GÖRSELLERİ İNDİR",
+                        data=zip_buffer.getvalue(),
+                        file_name=(
+                            "sistemist-toplu-donusum-"
+                            f"{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
+                        ),
+                        mime="application/zip"
+                    )
 
-                add_history(
-                    "Toplu Dönüştürme",
-                    "Başarılı",
-                    f"{success_count} görsel dönüştürüldü",
-                    success_count
-                )
+                if failed_count:
 
-                st.success(
-                    f"{success_count} görsel başarıyla dönüştürüldü."
-                )
-
-                st.download_button(
-                    "DÖNÜŞTÜRÜLEN GÖRSELLERİ İNDİR",
-                    data=zip_buffer.getvalue(),
-                    file_name=(
-                        "sistemist-toplu-donusum-"
-                        f"{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
-                    ),
-                    mime="application/zip"
-                )
-
-            if failed_count:
-
-                st.warning(
-                    f"{failed_count} görsel işlenemedi."
-                )
-
+                    st.warning(
+                        f"{failed_count} görsel işlenemedi."
+                    )
     app_footer()
 
 
@@ -2709,24 +2839,14 @@ elif st.session_state.current_page == "Paket & Lisans":
 
         with column:
 
-            st.markdown(
-                dedent(f"""
-                <div class="panel">
-                    <div class="system-read">
-                        {package["name"]}
-                    </div>
-
-                    <div class="panel-title">
-                        {package["price"]}
-                    </div>
-
-                    <div class="panel-subtitle">
-                        {package["desc"]}
-                    </div>
-                </div>
-                """),
-                unsafe_allow_html=True
+            package_html = (
+                f'<div class="panel package-card">'
+                f'<div class="system-read">{package["name"]}</div>'
+                f'<div class="panel-title">{package["price"]}</div>'
+                f'<div class="panel-subtitle">{package["desc"]}</div>'
+                f'</div>'
             )
+            st.markdown(package_html, unsafe_allow_html=True)
 
             if st.button(
                 f"{package['name']} PAKETİNİ SEÇ",
