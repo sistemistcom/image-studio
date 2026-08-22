@@ -138,6 +138,19 @@ if "customer_email" not in st.session_state:
 if "customer_package" not in st.session_state:
     st.session_state.customer_package = ""
 
+# Erişim süresi bilgileri - mevcut yapıya eklenmiştir
+if "customer_months" not in st.session_state:
+    st.session_state.customer_months = 0
+
+if "customer_start_date" not in st.session_state:
+    st.session_state.customer_start_date = ""
+
+if "customer_end_date" not in st.session_state:
+    st.session_state.customer_end_date = ""
+
+if "customer_remaining_days" not in st.session_state:
+    st.session_state.customer_remaining_days = 0
+
 if "access_checked" not in st.session_state:
     st.session_state.access_checked = False
 
@@ -168,6 +181,26 @@ if not st.session_state.access_checked:
 
             st.session_state.active_package = (
                 access_data.get("package", "PRO")
+            )
+
+            # Erişim süresi bilgilerini mevcut oturuma ekle
+            st.session_state.customer_months = (
+                access_data.get("months", st.session_state.customer_months)
+            )
+
+            st.session_state.customer_start_date = (
+                access_data.get("start_date", st.session_state.customer_start_date)
+            )
+
+            st.session_state.customer_end_date = (
+                access_data.get("end_date", st.session_state.customer_end_date)
+            )
+
+            st.session_state.customer_remaining_days = (
+                access_data.get(
+                    "remaining_days",
+                    st.session_state.customer_remaining_days
+                )
             )
 
         else:
@@ -255,6 +288,23 @@ Image Studio'yu kullanabilmek için satın alma işleminizde kullandığınız e
 
                 st.session_state.active_package = login_data.get(
                     "package", "PRO"
+                )
+
+                # Satın alınan paketin süre bilgilerini kaydet
+                st.session_state.customer_months = login_data.get(
+                    "months", 0
+                )
+
+                st.session_state.customer_start_date = login_data.get(
+                    "start_date", ""
+                )
+
+                st.session_state.customer_end_date = login_data.get(
+                    "end_date", ""
+                )
+
+                st.session_state.customer_remaining_days = login_data.get(
+                    "remaining_days", 0
                 )
 
                 st.success("Giriş başarılı. Image Studio açılıyor...")
@@ -1451,6 +1501,29 @@ if st.session_state.current_page == "Dashboard":
         )
 
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+    # Satın alınan paket erişim süresi - mevcut Dashboard'a eklenmiştir
+    if st.session_state.customer_end_date:
+
+        if st.session_state.customer_remaining_days > 0:
+            access_status = f"{st.session_state.customer_remaining_days} gün kaldı"
+        else:
+            access_status = "Süre bilgisi güncelleniyor"
+
+        st.markdown(
+            dedent(f"""
+            <div class="stat-card orange">
+                <div class="stat-icon">◷</div>
+                <div class="stat-label">Paket Süresi</div>
+                <div class="stat-value">{access_status}</div>
+                <div class="stat-sub">
+                    Başlangıç: {st.session_state.customer_start_date or "-"} &nbsp; • &nbsp;
+                    Bitiş: {st.session_state.customer_end_date}
+                </div>
+            </div>
+            """),
+            unsafe_allow_html=True
+        )
 
     engine1, engine2 = st.columns(2)
 
