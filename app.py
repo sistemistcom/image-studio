@@ -5,6 +5,7 @@ import json
 import time
 import base64
 import html
+import hashlib
 import zipfile
 import mimetypes
 import unicodedata
@@ -1002,6 +1003,36 @@ textarea::placeholder {
     margin-top: 18px;
 }
 
+.gallery-heading {
+    color: #f4f7fb;
+    font-size: 16px;
+    font-weight: 700;
+    margin: 18px 0 10px;
+}
+
+.gallery-index {
+    display: inline-block;
+    color: #ffffff;
+    background: var(--orange);
+    border-radius: 999px;
+    padding: 3px 9px;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.gallery-selected {
+    color: var(--orange);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .8px;
+    margin-left: 7px;
+}
+
+[data-testid="stVerticalBlockBorderWrapper"]:has(.gallery-selected) {
+    border-color: var(--orange) !important;
+    box-shadow: 0 0 0 1px rgba(255,106,0,.35), 0 10px 28px rgba(255,106,0,.10);
+}
+
 .guide-step {
     background: #121c27;
     border: 1px solid #2a3a4c;
@@ -1158,6 +1189,122 @@ def format_size(size_bytes):
         size /= 1024
 
     return f"{size:.1f} TB"
+
+
+def render_image_gallery(uploaded_files, key_prefix, page_size=24):
+    """Yüklenen görselleri sıralı, sayfalı ve yönetilebilir kartlar halinde gösterir."""
+    files = list(uploaded_files or [])
+    signature = tuple(
+        (index, item.name, getattr(item, "size", len(item.getvalue())))
+        for index, item in enumerate(files)
+    )
+    signature_key = f"{key_prefix}_gallery_signature"
+    excluded_key = f"{key_prefix}_gallery_excluded"
+    selected_key = f"{key_prefix}_gallery_selected"
+
+    if st.session_state.get(signature_key) != signature:
+        st.session_state[signature_key] = signature
+        st.session_state[excluded_key] = set()
+        st.session_state[selected_key] = ""
+
+    excluded = set(st.session_state.get(excluded_key, set()))
+    records = []
+
+    for original_index, uploaded_file in enumerate(files):
+        size_bytes = getattr(uploaded_file, "size", len(uploaded_file.getvalue()))
+        file_id = hashlib.sha1(
+            f"{original_index}|{uploaded_file.name}|{size_bytes}".encode("utf-8")
+        ).hexdigest()[:12]
+
+        if file_id in excluded:
+            continue
+
+        try:
+            with Image.open(io.BytesIO(uploaded_file.getvalue())) as preview_image:
+                resolution = f"{preview_image.width} × {preview_image.height} px"
+                thumbnail = ImageOps.exif_transpose(preview_image).copy()
+                thumbnail.thumbnail((420, 260), Image.Resampling.LANCZOS)
+                thumbnail_buffer = io.BytesIO()
+                thumbnail.save(thumbnail_buffer, format="PNG", optimize=True)
+                thumbnail_bytes = thumbnail_buffer.getvalue()
+        except Exception:
+            resolution = "Ölçü okunamadı"
+            thumbnail_bytes = uploaded_file.getvalue()
+
+        records.append({
+            "id": file_id,
+            "file": uploaded_file,
+            "resolution": resolution,
+            "size": format_size(size_bytes),
+            "thumbnail": thumbnail_bytes,
+        })
+
+    if not records:
+        st.warning("İşlenecek görsel kalmadı. Yeni dosya ekleyebilir veya yükleme alanını temizleyebilirsiniz.")
+        return []
+
+    st.markdown(
+        f'<div class="gallery-heading">Yüklenen görseller ({len(records)})</div>',
+        unsafe_allow_html=True
+    )
+
+    total_pages = max(1, (len(records) + page_size - 1) // page_size)
+    if total_pages > 1:
+        page_key = f"{key_prefix}_gallery_page"
+        if st.session_state.get(page_key, 1) > total_pages:
+            st.session_state[page_key] = total_pages
+        page = st.selectbox(
+            "Galeri sayfası",
+            range(1, total_pages + 1),
+            format_func=lambda value: f"{value}. sayfa / {total_pages}",
+            key=page_key
+        )
+    else:
+        page = 1
+
+    start = (page - 1) * page_size
+    visible_records = records[start:start + page_size]
+    columns = st.columns(4)
+
+    for visible_index, record in enumerate(visible_records):
+        sequence = start + visible_index + 1
+        with columns[visible_index % 4]:
+            with st.container(border=True):
+                selected = st.session_state.get(selected_key) == record["id"]
+                selected_html = '<span class="gallery-selected">SEÇİLİ</span>' if selected else ""
+                st.markdown(
+                    f'<span class="gallery-index">{sequence}</span>{selected_html}',
+                    unsafe_allow_html=True
+                )
+                st.image(record["thumbnail"], use_container_width=True)
+                st.caption(
+                    f"{record['file'].name}\n\n{record['resolution']} · {record['size']}"
+                )
+                action_col, remove_col = st.columns(2)
+                with action_col:
+                    if st.button("Önizle", key=f"{key_prefix}_preview_{record['id']}", use_container_width=True):
+                        st.session_state[selected_key] = record["id"]
+                with remove_col:
+                    if st.button("Kaldır", key=f"{key_prefix}_remove_{record['id']}", use_container_width=True):
+                        excluded.add(record["id"])
+                        st.session_state[excluded_key] = excluded
+                        if selected:
+                            st.session_state[selected_key] = ""
+                        st.rerun()
+
+    selected_id = st.session_state.get(selected_key)
+    selected_record = next((item for item in records if item["id"] == selected_id), None)
+    if selected_record:
+        st.markdown('<div class="gallery-heading">Büyük önizleme</div>', unsafe_allow_html=True)
+        preview_col, info_col = st.columns([2, 1])
+        with preview_col:
+            st.image(selected_record["file"].getvalue(), use_container_width=True)
+        with info_col:
+            st.markdown(f"**{selected_record['file'].name}**")
+            st.write(selected_record["resolution"])
+            st.write(selected_record["size"])
+
+    return [record["file"] for record in records]
 
 
 def get_file_extension_from_url(url):
@@ -2126,6 +2273,13 @@ elif st.session_state.current_page == "Görsel → URL":
         )
 
         if uploaded_images:
+            uploaded_images = render_image_gallery(
+                uploaded_images,
+                "r2_upload",
+                page_size=24
+            )
+
+        if uploaded_images:
 
             st.info(
                 f"{len(uploaded_images)} görsel yüklenmeye hazır."
@@ -2407,6 +2561,13 @@ elif st.session_state.current_page == "Toplu Dönüştürme":
         accept_multiple_files=True,
         key="batch_images"
     )
+
+    if uploaded_images:
+        uploaded_images = render_image_gallery(
+            uploaded_images,
+            "batch_upload",
+            page_size=24
+        )
 
     if uploaded_images:
         st.success(f"{len(uploaded_images)} görsel seçildi. Ayarlarınıza göre dönüştürmeye hazır.")
