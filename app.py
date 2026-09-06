@@ -22,6 +22,7 @@ from PIL import Image, ImageOps
 from openpyxl import load_workbook, Workbook
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 
 # =========================================================
@@ -30,13 +31,42 @@ import streamlit as st
 
 APP_DIR = Path(__file__).resolve().parent
 APP_ICON = APP_DIR / "sistemist-icon.png"
+BRAND_ICON_URL = "https://sistemist.com/wp-content/uploads/2026/08/ikon-sistemist-siyah.png"
 APP_VERSION = "8.0.0"
 
 st.set_page_config(
     page_title="Sistemist Image Studio",
-    page_icon=str(APP_ICON) if APP_ICON.exists() else "🟧",
+    page_icon=BRAND_ICON_URL,
     layout="wide",
     initial_sidebar_state="expanded"
+)
+
+# Chrome'un Türkçe metinleri tekrar çevirerek bozmasını önler.
+components.html(
+    """
+    <script>
+    (() => {
+        try {
+            const doc = window.parent.document;
+            doc.documentElement.lang = "tr";
+            doc.documentElement.setAttribute("translate", "no");
+            doc.body.classList.add("notranslate");
+
+            let meta = doc.head.querySelector('meta[name="google"]');
+            if (!meta) {
+                meta = doc.createElement("meta");
+                meta.setAttribute("name", "google");
+                doc.head.appendChild(meta);
+            }
+            meta.setAttribute("content", "notranslate");
+        } catch (error) {
+            console.debug("Translation guard could not access the parent page.", error);
+        }
+    })();
+    </script>
+    """,
+    height=0,
+    width=0,
 )
 
 
@@ -1466,11 +1496,12 @@ with st.sidebar:
     if APP_ICON.exists():
         icon_base64 = base64.b64encode(APP_ICON.read_bytes()).decode("ascii")
         icon_html = (
-            f'<img class="brand-symbol" src="data:image/png;base64,{icon_base64}" '
+            f'<img class="brand-symbol" src="{BRAND_ICON_URL}" '
+            f'onerror="this.onerror=null;this.src=\'data:image/png;base64,{icon_base64}\';" '
             'alt="Sistemist">'
         )
     else:
-        icon_html = '<div class="brand-symbol"></div>'
+        icon_html = f'<img class="brand-symbol" src="{BRAND_ICON_URL}" alt="Sistemist">'
 
     sidebar_brand_html = (
         '<div class="sidebar-wrap">'
