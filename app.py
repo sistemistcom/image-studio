@@ -31,12 +31,13 @@ import streamlit.components.v1 as components
 
 APP_DIR = Path(__file__).resolve().parent
 APP_ICON = APP_DIR / "sistemist-icon.png"
-BRAND_ICON_URL = "https://sistemist.com/wp-content/uploads/2026/09/seffafikon.png"
+SIDEBAR_ICON_URL = "https://sistemist.com/wp-content/uploads/2026/09/sefafikonbuyuk.png"
+FAVICON_URL = "https://sistemist.com/wp-content/uploads/2026/08/ikon-sistemist-siyah.png"
 APP_VERSION = "8.0.0"
 
 st.set_page_config(
     page_title="Sistemist Image Studio",
-    page_icon=BRAND_ICON_URL,
+    page_icon=FAVICON_URL,
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -536,8 +537,8 @@ footer,
 }
 
 .brand-symbol {
-    width: 46px;
-    height: 46px;
+    width: 62px;
+    height: 62px;
     object-fit: contain;
     border-radius: 10px;
     flex-shrink: 0;
@@ -561,7 +562,7 @@ footer,
     font-weight: 700;
     letter-spacing: 2px;
     margin-top: 10px;
-    margin-left: 59px;
+    margin-left: 75px;
 }
 
 .nav-label {
@@ -1502,12 +1503,12 @@ with st.sidebar:
     if APP_ICON.exists():
         icon_base64 = base64.b64encode(APP_ICON.read_bytes()).decode("ascii")
         icon_html = (
-            f'<img class="brand-symbol" src="{BRAND_ICON_URL}" '
+            f'<img class="brand-symbol" src="{SIDEBAR_ICON_URL}" '
             f'onerror="this.onerror=null;this.src=\'data:image/png;base64,{icon_base64}\';" '
             'alt="Sistemist">'
         )
     else:
-        icon_html = f'<img class="brand-symbol" src="{BRAND_ICON_URL}" alt="Sistemist">'
+        icon_html = f'<img class="brand-symbol" src="{SIDEBAR_ICON_URL}" alt="Sistemist">'
 
     sidebar_brand_html = (
         '<div class="sidebar-wrap">'
