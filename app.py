@@ -12,7 +12,7 @@ import unicodedata
 from datetime import datetime, date
 from textwrap import dedent
 from pathlib import Path
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 import requests
 import boto3
@@ -27,14 +27,14 @@ import streamlit.components.v1 as components
 
 
 # =========================================================
-# SİSTEMİST IMAGE STUDIO WEB V7.7 PRO
+# SİSTEMİST IMAGE STUDIO WEB V8.5 PWA
 # =========================================================
 
 APP_DIR = Path(__file__).resolve().parent
 APP_ICON = APP_DIR / "sistemist-icon.png"
 SIDEBAR_ICON_URL = "https://sistemist.com/wp-content/uploads/2026/09/sefafikonbuyuk.png"
 FAVICON_URL = "https://sistemist.com/wp-content/uploads/2026/08/ikon-sistemist-siyah.png"
-APP_VERSION = "8.4.1"
+APP_VERSION = "8.5.2"
 
 st.set_page_config(
     page_title="Sistemist Image Studio",
@@ -43,13 +43,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Chrome'un Türkçe metinleri tekrar çevirerek bozmasını önler.
+# Chrome'un Türkçe metinleri tekrar çevirerek bozmasını önler ve
+# uygulamayı telefon/masaüstüne kurulabilir hale getiren PWA etiketlerini ekler.
 components.html(
     """
     <script>
     (() => {
         try {
             const doc = window.parent.document;
+            const win = window.parent;
             doc.documentElement.lang = "tr";
             doc.documentElement.setAttribute("translate", "no");
             doc.body.classList.add("notranslate");
@@ -61,8 +63,85 @@ components.html(
                 doc.head.appendChild(meta);
             }
             meta.setAttribute("content", "notranslate");
+
+            const ensureMeta = (name, content) => {
+                let item = doc.head.querySelector(`meta[name="${name}"]`);
+                if (!item) {
+                    item = doc.createElement("meta");
+                    item.setAttribute("name", name);
+                    doc.head.appendChild(item);
+                }
+                item.setAttribute("content", content);
+            };
+
+            let manifest = doc.head.querySelector('link[rel="manifest"]');
+            if (!manifest) {
+                manifest = doc.createElement("link");
+                manifest.setAttribute("rel", "manifest");
+                doc.head.appendChild(manifest);
+            }
+            manifest.setAttribute("href", "/app/static/manifest.json?v=850");
+
+            let appleIcon = doc.head.querySelector('link[rel="apple-touch-icon"]');
+            if (!appleIcon) {
+                appleIcon = doc.createElement("link");
+                appleIcon.setAttribute("rel", "apple-touch-icon");
+                doc.head.appendChild(appleIcon);
+            }
+            appleIcon.setAttribute("href", "/app/static/icon-192.png?v=850");
+
+            ensureMeta("theme-color", "#0b1119");
+            ensureMeta("mobile-web-app-capable", "yes");
+            ensureMeta("apple-mobile-web-app-capable", "yes");
+            ensureMeta("apple-mobile-web-app-status-bar-style", "black-translucent");
+            ensureMeta("apple-mobile-web-app-title", "Image Studio");
+
+            const isStandalone = win.matchMedia("(display-mode: standalone)").matches
+                || win.navigator.standalone === true;
+            const isIOS = /iphone|ipad|ipod/i.test(win.navigator.userAgent);
+
+            if (!isStandalone && !doc.getElementById("sis-pwa-install")) {
+                const button = doc.createElement("button");
+                button.id = "sis-pwa-install";
+                button.type = "button";
+                button.textContent = "Uygulamayı Yükle";
+                button.setAttribute("aria-label", "Sistemist Image Studio uygulamasını yükle");
+                button.style.cssText = [
+                    "position:fixed", "right:18px", "bottom:18px", "z-index:999999",
+                    "display:none", "border:0", "border-radius:12px", "padding:12px 18px",
+                    "background:#ff6a00", "color:#fff", "font:700 14px sans-serif",
+                    "box-shadow:0 8px 28px rgba(0,0,0,.35)", "cursor:pointer"
+                ].join(";");
+                doc.body.appendChild(button);
+
+                if (isIOS) {
+                    button.style.display = "block";
+                    button.textContent = "Ana Ekrana Ekle";
+                    button.addEventListener("click", () => {
+                        win.alert("Safari'de Paylaş simgesine dokunun, ardından ‘Ana Ekrana Ekle’ seçeneğini seçin.");
+                    });
+                } else {
+                    win.addEventListener("beforeinstallprompt", (event) => {
+                        event.preventDefault();
+                        win.__sisInstallPrompt = event;
+                        button.style.display = "block";
+                    });
+                    button.addEventListener("click", async () => {
+                        const promptEvent = win.__sisInstallPrompt;
+                        if (!promptEvent) return;
+                        promptEvent.prompt();
+                        await promptEvent.userChoice;
+                        win.__sisInstallPrompt = null;
+                        button.style.display = "none";
+                    });
+                    win.addEventListener("appinstalled", () => {
+                        win.__sisInstallPrompt = null;
+                        button.style.display = "none";
+                    });
+                }
+            }
         } catch (error) {
-            console.debug("Translation guard could not access the parent page.", error);
+            console.debug("Page/PWA setup could not access the parent page.", error);
         }
     })();
     </script>
@@ -145,6 +224,59 @@ ACCESS_API_URL = os.getenv(
     "SISTEMIST_ACCESS_API_URL",
     "https://sistemist.com/wp-json/sistemist/v1"
 )
+
+LOGIN_COOKIE_NAME = "sis_studio_session"
+LOGIN_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
+
+
+def read_login_cookie():
+    """Yeni Streamlit oturumunda tarayıcıdaki kalıcı erişim anahtarını okur."""
+    try:
+        cookies = st.context.cookies
+        if LOGIN_COOKIE_NAME in cookies:
+            return unquote(str(cookies[LOGIN_COOKIE_NAME] or "")).strip()
+    except (AttributeError, KeyError, TypeError):
+        pass
+    return ""
+
+
+def save_login_cookie(token):
+    """Erişim kodunu değil, sunucunun verdiği iptal edilebilir oturum tokenini saklar."""
+    safe_token = json.dumps(str(token or ""))
+    components.html(
+        f"""
+        <script>
+        (() => {{
+            const token = {safe_token};
+            window.parent.document.cookie =
+                "{LOGIN_COOKIE_NAME}=" + encodeURIComponent(token)
+                + "; Path=/; Max-Age={LOGIN_COOKIE_MAX_AGE}; SameSite=Strict; Secure";
+            window.setTimeout(() => window.parent.location.reload(), 350);
+        }})();
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
+
+
+def delete_login_cookie(reload_page=False):
+    """Çıkışta veya geçersiz lisans halinde kalıcı oturum çerezini siler."""
+    reload_script = (
+        "window.setTimeout(() => window.parent.location.reload(), 250);"
+        if reload_page else ""
+    )
+    components.html(
+        f"""
+        <script>
+        window.parent.document.cookie =
+            "{LOGIN_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Strict; Secure";
+        {reload_script}
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
 
 
 def validate_access(email, access_code):
@@ -283,8 +415,10 @@ def customer_storage_slug():
 # LOGIN SESSION
 # =========================================================
 
+persisted_access_token = read_login_cookie()
+
 if "access_token" not in st.session_state:
-    st.session_state.access_token = ""
+    st.session_state.access_token = persisted_access_token
 
 if "customer_email" not in st.session_state:
     st.session_state.customer_email = ""
@@ -351,6 +485,10 @@ if st.session_state.access_token and access_is_expired():
     st.session_state["license_expired"] = True
 
 if not st.session_state.access_token:
+
+    # Tarayıcıdan gelen token artık geçerli değilse tekrar tekrar denenmesini önle.
+    if persisted_access_token:
+        delete_login_cookie()
 
     if st.session_state.get("license_expired"):
         st.error(
@@ -424,10 +562,9 @@ Image Studio'yu kullanabilmek için satın alma işleminizde kullandığınız e
                 st.session_state["license_expired"] = False
                 apply_access_data(login_data, login_email)
 
-                st.success("Giriş başarılı. Image Studio açılıyor...")
-
-                time.sleep(0.7)
-                st.rerun()
+                save_login_cookie(st.session_state.access_token)
+                st.success("Giriş başarılı. Oturumunuz güvenli şekilde hatırlanıyor...")
+                st.stop()
 
             else:
 
@@ -499,9 +636,36 @@ st.markdown(dedent("""
 --------------------------------------------------------- */
 
 #MainMenu,
-footer,
-[data-testid="stHeader"] {
+footer {
     display: none !important;
+}
+
+/* Başlık alanı tamamen gizlenirse, menü kapatıldığında yeniden açma oku da
+   kaybolur. Başlığı şeffaf tutup yalnızca araç çubuğunu gizliyoruz. */
+[data-testid="stHeader"] {
+    display: block !important;
+    background: transparent !important;
+    pointer-events: none !important;
+}
+
+[data-testid="stToolbar"] {
+    visibility: hidden !important;
+}
+
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="stSidebarCollapsedControl"] *,
+[data-testid="stSidebarCollapseButton"],
+[data-testid="stSidebarCollapseButton"] * {
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
+
+[data-testid="stSidebarCollapsedControl"] button,
+[data-testid="stSidebarCollapseButton"] button {
+    background: #151f2b !important;
+    color: #ffffff !important;
+    border: 1px solid #314258 !important;
+    border-radius: 9px !important;
 }
 
 
@@ -2118,7 +2282,8 @@ with st.sidebar:
     if st.button("Çıkış Yap", key="logout"):
         st.session_state.access_token = ""
         st.session_state.access_checked = True
-        st.rerun()
+        delete_login_cookie(reload_page=True)
+        st.stop()
 
 
 # =========================================================
