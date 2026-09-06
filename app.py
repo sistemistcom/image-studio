@@ -1689,14 +1689,14 @@ def build_quality_report(records):
     worksheet = workbook.active
     worksheet.title = "Görsel Kalite Raporu"
     headers = [
-        "Sıra", "Dosya", "Çözünürlük", "Format", "Boyut (MB)",
+        "Pazaryeri", "Sıra", "Dosya", "Çözünürlük", "Format", "Boyut (MB)",
         "Netlik", "Netlik Skoru", "Arka Plan", "Durum", "Sorunlar"
     ]
     worksheet.append(headers)
     for record in records:
         worksheet.append([record.get(header, "") for header in headers])
     worksheet.freeze_panes = "A2"
-    widths = [8, 34, 18, 12, 14, 12, 16, 16, 13, 70]
+    widths = [30, 8, 34, 18, 12, 14, 12, 16, 16, 13, 70]
     for index, width in enumerate(widths, start=1):
         worksheet.column_dimensions[chr(64 + index)].width = width
     buffer = io.BytesIO()
@@ -2145,18 +2145,53 @@ elif st.session_state.current_page == "Pazaryeri Hazırlama":
         "SİSTEMİST MARKETPLACE ENGINE"
     )
 
-    preset_name = st.selectbox(
-        "Hedef platform ve kullanım alanı",
-        list(MARKETPLACE_PRESETS.keys()),
-        key="marketplace_preset"
+    marketplace_mode = st.radio(
+        "Hazırlama türü",
+        ["Tek Pazaryeri", "Çoklu Pazaryeri Paketi"],
+        horizontal=True,
+        key="marketplace_mode"
     )
+
+    if marketplace_mode == "Tek Pazaryeri":
+        preset_name = st.selectbox(
+            "Hedef platform ve kullanım alanı",
+            list(MARKETPLACE_PRESETS.keys()),
+            key="marketplace_preset"
+        )
+        selected_marketplace_names = [preset_name]
+    else:
+        selected_marketplace_names = st.multiselect(
+            "Hazırlanacak pazaryerleri",
+            list(MARKETPLACE_PRESETS.keys()),
+            default=[
+                "Trendyol · Ürün Dikey",
+                "Hepsiburada · Ürün Kare",
+                "Amazon · Ürün Kare",
+            ],
+            key="marketplace_multi_presets"
+        )
+        if not selected_marketplace_names:
+            st.warning("Paket oluşturmak için en az bir pazaryeri seçin.")
+        preset_name = (
+            selected_marketplace_names[0]
+            if selected_marketplace_names
+            else next(iter(MARKETPLACE_PRESETS))
+        )
+
     preset = MARKETPLACE_PRESETS[preset_name]
     target_width, target_height = preset["size"]
 
     metric1, metric2, metric3 = st.columns(3)
     metric1.metric("Çıktı ölçüsü", f"{target_width} × {target_height} px")
     metric2.metric("Önerilen minimum", f"{preset['min_size'][0]} × {preset['min_size'][1]} px")
-    metric3.metric("Dosya sınırı", f"{preset['max_mb']} MB")
+    metric3.metric(
+        "Seçilen pazaryeri" if marketplace_mode == "Çoklu Pazaryeri Paketi" else "Dosya sınırı",
+        str(len(selected_marketplace_names)) if marketplace_mode == "Çoklu Pazaryeri Paketi" else f"{preset['max_mb']} MB"
+    )
+    if marketplace_mode == "Çoklu Pazaryeri Paketi":
+        st.info(
+            "Önizleme ve üstteki ölçüler ilk seçilen pazaryerini gösterir. ZIP paketinde her pazaryeri kendi klasöründe ve kendi ölçüsünde hazırlanır."
+        )
     st.caption(
         "Hazır ölçüler güvenli çalışma şablonlarıdır. Pazaryeri kuralları kategoriye ve zamana göre değişebileceği için yüklemeden önce satıcı panelindeki güncel uyarıları kontrol edin."
     )
@@ -2180,21 +2215,28 @@ elif st.session_state.current_page == "Pazaryeri Hazırlama":
     if marketplace_files:
         st.markdown('<div class="section-title">Görsel kalite ve uygunluk raporu</div>', unsafe_allow_html=True)
         quality_records = []
-        for index, uploaded_file in enumerate(marketplace_files, start=1):
-            report_record = analyze_marketplace_image(uploaded_file, preset)
-            report_record["Sıra"] = index
-            quality_records.append(report_record)
+        for report_marketplace_name in selected_marketplace_names:
+            report_preset = MARKETPLACE_PRESETS[report_marketplace_name]
+            for index, uploaded_file in enumerate(marketplace_files, start=1):
+                report_record = analyze_marketplace_image(uploaded_file, report_preset)
+                report_record["Pazaryeri"] = report_marketplace_name
+                report_record["Sıra"] = index
+                quality_records.append(report_record)
 
         st.dataframe(
             quality_records,
             use_container_width=True,
             hide_index=True,
-            column_order=["Sıra", "Dosya", "Çözünürlük", "Boyut (MB)", "Netlik", "Arka Plan", "Durum", "Sorunlar"]
+            column_order=["Pazaryeri", "Sıra", "Dosya", "Çözünürlük", "Boyut (MB)", "Netlik", "Arka Plan", "Durum", "Sorunlar"]
         )
         st.download_button(
             "KALİTE RAPORUNU EXCEL OLARAK İNDİR",
             data=build_quality_report(quality_records),
-            file_name=f"sistemist-{preset['slug']}-kalite-raporu.xlsx",
+            file_name=(
+                "sistemist-coklu-pazaryeri-kalite-raporu.xlsx"
+                if marketplace_mode == "Çoklu Pazaryeri Paketi"
+                else f"sistemist-{preset['slug']}-kalite-raporu.xlsx"
+            ),
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key="download_marketplace_quality_report"
         )
@@ -2213,7 +2255,9 @@ elif st.session_state.current_page == "Pazaryeri Hazırlama":
                 "Yerleşim modu",
                 fit_options,
                 index=fit_options.index(preset["fit"]),
-                key="marketplace_fit"
+                key="marketplace_fit",
+                disabled=marketplace_mode == "Çoklu Pazaryeri Paketi",
+                help="Çoklu pakette her platformun önerilen yerleşim ayarı otomatik uygulanır."
             )
         with setting3:
             marketplace_quality = st.slider(
@@ -2275,7 +2319,7 @@ elif st.session_state.current_page == "Pazaryeri Hazırlama":
                 preview_processed = prepare_image(
                     preview_image,
                     preset["size"],
-                    marketplace_fit
+                    preset["fit"] if marketplace_mode == "Çoklu Pazaryeri Paketi" else marketplace_fit
                 )
                 if watermark_bytes:
                     preview_processed = apply_watermark(
@@ -2307,84 +2351,164 @@ elif st.session_state.current_page == "Pazaryeri Hazırlama":
                     f"{target_width} × {target_height} px · {marketplace_format} · {format_size(len(preview_output_bytes))}"
                 )
 
-        process_disabled = bool(enable_watermark and not watermark_bytes)
+        process_disabled = bool(
+            (enable_watermark and not watermark_bytes)
+            or not selected_marketplace_names
+        )
+        process_button_label = (
+            "ÇOKLU PAZARYERİ PAKETİNİ OLUŞTUR"
+            if marketplace_mode == "Çoklu Pazaryeri Paketi"
+            else "PAZARYERİ GÖRSELLERİNİ HAZIRLA"
+        )
         if st.button(
-            "PAZARYERİ GÖRSELLERİNİ HAZIRLA",
+            process_button_label,
             key="process_marketplace_images",
             disabled=process_disabled,
             use_container_width=True
         ):
             zip_buffer = io.BytesIO()
-            total_before = 0
+            total_before = sum(len(item.getvalue()) for item in marketplace_files)
             total_after = 0
             success_count = 0
             failed = []
-            used_output_names = set()
+            used_output_paths = set()
+            manifest_rows = []
             progress = st.progress(0)
             status = st.empty()
+            total_tasks = len(marketplace_files) * len(selected_marketplace_names)
+            completed_tasks = 0
 
             with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-                for index, uploaded_file in enumerate(marketplace_files, start=1):
-                    try:
-                        status.info(f"Hazırlanıyor: {index}/{len(marketplace_files)}")
-                        source_bytes = uploaded_file.getvalue()
-                        with Image.open(io.BytesIO(source_bytes)) as source_image:
-                            source_image.load()
-                            processed = prepare_image(source_image, preset["size"], marketplace_fit)
-                            if watermark_bytes:
-                                processed = apply_watermark(
-                                    processed,
-                                    watermark_bytes,
-                                    watermark_position,
-                                    watermark_width,
-                                    watermark_opacity
-                                )
-                            output_bytes, extension = save_image_to_buffer(
-                                processed,
-                                marketplace_format,
-                                marketplace_quality
-                            )
+                for target_marketplace_name in selected_marketplace_names:
+                    target_preset = MARKETPLACE_PRESETS[target_marketplace_name]
+                    target_fit = (
+                        target_preset["fit"]
+                        if marketplace_mode == "Çoklu Pazaryeri Paketi"
+                        else marketplace_fit
+                    )
 
-                        output_base = build_smart_filename(
-                            name_template,
-                            uploaded_file.name,
-                            preset["slug"],
-                            preset["size"],
-                            index
-                        )
-                        if output_base in used_output_names:
-                            output_base = f"{output_base}-{index:03d}"
-                        used_output_names.add(output_base)
-                        zip_file.writestr(f"{output_base}{extension}", output_bytes)
-                        total_before += len(source_bytes)
-                        total_after += len(output_bytes)
-                        success_count += 1
-                    except Exception as error:
-                        failed.append(f"{uploaded_file.name}: {error}")
-                    progress.progress(index / len(marketplace_files))
+                    for index, uploaded_file in enumerate(marketplace_files, start=1):
+                        try:
+                            status.info(
+                                f"{target_marketplace_name}: {index}/{len(marketplace_files)} hazırlanıyor"
+                            )
+                            source_bytes = uploaded_file.getvalue()
+                            with Image.open(io.BytesIO(source_bytes)) as source_image:
+                                source_image.load()
+                                processed = prepare_image(source_image, target_preset["size"], target_fit)
+                                if watermark_bytes:
+                                    processed = apply_watermark(
+                                        processed,
+                                        watermark_bytes,
+                                        watermark_position,
+                                        watermark_width,
+                                        watermark_opacity
+                                    )
+                                output_bytes, extension = save_image_to_buffer(
+                                    processed,
+                                    marketplace_format,
+                                    marketplace_quality
+                                )
+
+                            output_base = build_smart_filename(
+                                name_template,
+                                uploaded_file.name,
+                                target_preset["slug"],
+                                target_preset["size"],
+                                index
+                            )
+                            output_path = (
+                                f"{target_preset['slug']}/{output_base}{extension}"
+                                if marketplace_mode == "Çoklu Pazaryeri Paketi"
+                                else f"{output_base}{extension}"
+                            )
+                            if output_path in used_output_paths:
+                                output_path = (
+                                    f"{target_preset['slug']}/{output_base}-{index:03d}{extension}"
+                                    if marketplace_mode == "Çoklu Pazaryeri Paketi"
+                                    else f"{output_base}-{index:03d}{extension}"
+                                )
+                            used_output_paths.add(output_path)
+                            zip_file.writestr(output_path, output_bytes)
+                            total_after += len(output_bytes)
+                            success_count += 1
+                            manifest_rows.append([
+                                target_marketplace_name,
+                                index,
+                                uploaded_file.name,
+                                output_path,
+                                f"{target_preset['size'][0]} × {target_preset['size'][1]}",
+                                marketplace_format,
+                                round(len(output_bytes) / 1048576, 3),
+                                "BAŞARILI",
+                            ])
+                        except Exception as error:
+                            failed.append(f"{target_marketplace_name} · {uploaded_file.name}: {error}")
+                            manifest_rows.append([
+                                target_marketplace_name,
+                                index,
+                                uploaded_file.name,
+                                "",
+                                "",
+                                marketplace_format,
+                                "",
+                                f"HATA: {error}",
+                            ])
+                        completed_tasks += 1
+                        progress.progress(completed_tasks / total_tasks)
+
+                if marketplace_mode == "Çoklu Pazaryeri Paketi":
+                    manifest_book = Workbook()
+                    manifest_sheet = manifest_book.active
+                    manifest_sheet.title = "Paket İçeriği"
+                    manifest_sheet.append([
+                        "PAZARYERİ", "SIRA", "ORİJİNAL DOSYA", "ZIP YOLU",
+                        "ÖLÇÜ", "FORMAT", "BOYUT_MB", "DURUM"
+                    ])
+                    for row in manifest_rows:
+                        manifest_sheet.append(row)
+                    manifest_sheet.freeze_panes = "A2"
+                    manifest_buffer = io.BytesIO()
+                    manifest_book.save(manifest_buffer)
+                    zip_file.writestr("pazaryeri-paket-raporu.xlsx", manifest_buffer.getvalue())
 
             status.empty()
             zip_buffer.seek(0)
 
             if success_count:
-                saving_percent = (
-                    max(0, round((1 - total_after / total_before) * 100, 1))
-                    if total_before else 0
-                )
+                is_multi = marketplace_mode == "Çoklu Pazaryeri Paketi"
                 add_history(
-                    "Pazaryeri Hazırlama",
+                    "Çoklu Pazaryeri Paketi" if is_multi else "Pazaryeri Hazırlama",
                     "Başarılı",
-                    f"{preset_name}: {success_count} görsel hazırlandı",
+                    (
+                        f"{len(selected_marketplace_names)} pazaryeri için {success_count} çıktı hazırlandı"
+                        if is_multi
+                        else f"{preset_name}: {success_count} görsel hazırlandı"
+                    ),
                     success_count
                 )
-                st.success(
-                    f"{success_count} görsel hazırlandı. Toplam boyut: "
-                    f"{format_size(total_before)} → {format_size(total_after)} · Kazanç: %{saving_percent}"
-                )
+                if is_multi:
+                    st.success(
+                        f"{len(marketplace_files)} kaynak görsel, {len(selected_marketplace_names)} pazaryeri için "
+                        f"{success_count} çıktıya dönüştürüldü. Çıktı boyutu: {format_size(total_after)}"
+                    )
+                else:
+                    saving_percent = (
+                        max(0, round((1 - total_after / total_before) * 100, 1))
+                        if total_before else 0
+                    )
+                    st.success(
+                        f"{success_count} görsel hazırlandı. Toplam boyut: "
+                        f"{format_size(total_before)} → {format_size(total_after)} · Kazanç: %{saving_percent}"
+                    )
                 st.download_button(
-                    "HAZIRLANAN GÖRSELLERİ ZIP OLARAK İNDİR",
+                    "ÇOKLU PAZARYERİ ZIP PAKETİNİ İNDİR" if is_multi else "HAZIRLANAN GÖRSELLERİ ZIP OLARAK İNDİR",
                     data=zip_buffer.getvalue(),
-                    file_name=f"sistemist-{preset['slug']}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip",
+                    file_name=(
+                        f"sistemist-coklu-pazaryeri-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
+                        if is_multi
+                        else f"sistemist-{preset['slug']}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
+                    ),
                     mime="application/zip",
                     key="download_marketplace_zip",
                     use_container_width=True
@@ -2996,9 +3120,11 @@ elif st.session_state.current_page == "Toplu Dönüştürme":
 
     page_header(
         "<span>Toplu Görsel</span> Dönüştürme",
-        "Bilgisayarınızdaki görselleri toplu olarak yeniden boyutlandırın, dönüştürün ve ZIP dosyası olarak indirin.",
+        "Birden fazla görseli aynı format, ölçü ve kalite ayarlarıyla tek seferde dönüştürün.",
         "SİSTEMİST BATCH ENGINE"
     )
+
+    batch_mode = "Tek Ölçüde Dönüştürme"
 
     # Önce işlem ayarlarını gösteriyoruz. Böylece kullanıcı dosya yüklemeden
     # önce hangi işlemlerin yapılacağını açıkça görebilir.
@@ -3063,112 +3189,181 @@ elif st.session_state.current_page == "Toplu Dönüştürme":
     else:
         st.info("Önce dönüştürme ayarlarını belirleyin, ardından görsellerinizi seçin.")
 
+    batch_button_label = "TOPLU DÖNÜŞTÜRMEYİ BAŞLAT"
+    batch_disabled = not uploaded_images
+
     if st.button(
-        "TOPLU DÖNÜŞTÜRMEYİ BAŞLAT",
+        batch_button_label,
         key="start_batch",
-        disabled=not uploaded_images
+        disabled=batch_disabled,
+        use_container_width=True
     ):
+        zip_buffer = io.BytesIO()
+        success_count = 0
+        failed_count = 0
+        total_before = sum(len(item.getvalue()) for item in uploaded_images)
+        total_after = 0
+        progress = st.progress(0)
+        status = st.empty()
 
-        if uploaded_images:
+        if batch_mode == "Çoklu Pazaryeri Paketi":
+            total_tasks = len(uploaded_images) * len(selected_marketplaces)
+            completed_tasks = 0
+            manifest_rows = []
+            used_paths = set()
 
-                target_size = get_target_size(
-                    batch_size
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                for marketplace_name in selected_marketplaces:
+                    marketplace_preset = MARKETPLACE_PRESETS[marketplace_name]
+                    platform_slug = marketplace_preset["slug"]
+
+                    for image_index, uploaded_file in enumerate(uploaded_images, start=1):
+                        try:
+                            status.info(
+                                f"{marketplace_name}: {image_index}/{len(uploaded_images)} hazırlanıyor"
+                            )
+                            with Image.open(io.BytesIO(uploaded_file.getvalue())) as source_image:
+                                source_image.load()
+                                processed = prepare_image(
+                                    source_image,
+                                    marketplace_preset["size"],
+                                    marketplace_preset["fit"]
+                                )
+                                output_bytes, extension = save_image_to_buffer(
+                                    processed,
+                                    batch_format,
+                                    batch_quality
+                                )
+
+                            output_base = build_smart_filename(
+                                multi_name_template,
+                                uploaded_file.name,
+                                platform_slug,
+                                marketplace_preset["size"],
+                                image_index
+                            )
+                            relative_path = f"{platform_slug}/{output_base}{extension}"
+                            if relative_path in used_paths:
+                                relative_path = f"{platform_slug}/{output_base}-{image_index:03d}{extension}"
+                            used_paths.add(relative_path)
+                            zip_file.writestr(relative_path, output_bytes)
+                            total_after += len(output_bytes)
+                            success_count += 1
+                            manifest_rows.append([
+                                marketplace_name,
+                                image_index,
+                                uploaded_file.name,
+                                relative_path,
+                                f"{marketplace_preset['size'][0]} × {marketplace_preset['size'][1]}",
+                                batch_format,
+                                round(len(output_bytes) / 1048576, 3),
+                                "BAŞARILI",
+                            ])
+                        except Exception as error:
+                            failed_count += 1
+                            manifest_rows.append([
+                                marketplace_name,
+                                image_index,
+                                uploaded_file.name,
+                                "",
+                                "",
+                                batch_format,
+                                "",
+                                f"HATA: {error}",
+                            ])
+
+                        completed_tasks += 1
+                        progress.progress(completed_tasks / total_tasks)
+
+                manifest_book = Workbook()
+                manifest_sheet = manifest_book.active
+                manifest_sheet.title = "Paket İçeriği"
+                manifest_sheet.append([
+                    "PAZARYERİ", "SIRA", "ORİJİNAL DOSYA", "ZIP YOLU",
+                    "ÖLÇÜ", "FORMAT", "BOYUT_MB", "DURUM"
+                ])
+                for row in manifest_rows:
+                    manifest_sheet.append(row)
+                manifest_sheet.freeze_panes = "A2"
+                manifest_buffer = io.BytesIO()
+                manifest_book.save(manifest_buffer)
+                zip_file.writestr("pazaryeri-paket-raporu.xlsx", manifest_buffer.getvalue())
+
+            zip_buffer.seek(0)
+            status.empty()
+
+            if success_count:
+                add_history(
+                    "Çoklu Pazaryeri Paketi",
+                    "Başarılı",
+                    f"{len(selected_marketplaces)} pazaryeri için {success_count} çıktı hazırlandı",
+                    success_count
+                )
+                st.success(
+                    f"{len(uploaded_images)} kaynak görsel, {len(selected_marketplaces)} pazaryeri için "
+                    f"{success_count} çıktıya dönüştürüldü. Çıktı boyutu: {format_size(total_after)}"
+                )
+                st.download_button(
+                    "ÇOKLU PAZARYERİ ZIP PAKETİNİ İNDİR",
+                    data=zip_buffer.getvalue(),
+                    file_name=f"sistemist-coklu-pazaryeri-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip",
+                    mime="application/zip",
+                    key="download_multi_marketplace_zip",
+                    use_container_width=True
                 )
 
-                zip_buffer = io.BytesIO()
+        else:
+            target_size = get_target_size(batch_size)
 
-                success_count = 0
-                failed_count = 0
-
-                progress = st.progress(0)
-
-                with zipfile.ZipFile(
-                    zip_buffer,
-                    "w",
-                    zipfile.ZIP_DEFLATED
-                ) as zip_file:
-
-                    for index, uploaded_file in enumerate(
-                        uploaded_images
-                    ):
-
-                        try:
-
-                            image = Image.open(
-                                io.BytesIO(
-                                    uploaded_file.getvalue()
-                                )
-                            )
-
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                for index, uploaded_file in enumerate(uploaded_images, start=1):
+                    try:
+                        status.info(f"Dönüştürülüyor: {index}/{len(uploaded_images)}")
+                        with Image.open(io.BytesIO(uploaded_file.getvalue())) as image:
                             image.load()
-
-                            processed_image = prepare_image(
-                                image,
-                                target_size,
-                                batch_fit
-                            )
-
+                            processed_image = prepare_image(image, target_size, batch_fit)
                             image_bytes, extension = save_image_to_buffer(
                                 processed_image,
                                 batch_format,
                                 batch_quality
                             )
+                        base_name = clean_filename(Path(uploaded_file.name).stem)
+                        zip_file.writestr(f"{base_name}{extension}", image_bytes)
+                        total_after += len(image_bytes)
+                        success_count += 1
+                    except Exception:
+                        failed_count += 1
+                    progress.progress(index / len(uploaded_images))
 
-                            base_name = clean_filename(
-                                Path(
-                                    uploaded_file.name
-                                ).stem
-                            )
+            zip_buffer.seek(0)
+            status.empty()
 
-                            output_name = (
-                                f"{base_name}{extension}"
-                            )
+            if success_count:
+                saving_percent = (
+                    max(0, round((1 - total_after / total_before) * 100, 1))
+                    if total_before else 0
+                )
+                add_history(
+                    "Toplu Dönüştürme",
+                    "Başarılı",
+                    f"{success_count} görsel dönüştürüldü",
+                    success_count
+                )
+                st.success(
+                    f"{success_count} görsel dönüştürüldü. "
+                    f"{format_size(total_before)} → {format_size(total_after)} · Kazanç: %{saving_percent}"
+                )
+                st.download_button(
+                    "DÖNÜŞTÜRÜLEN GÖRSELLERİ İNDİR",
+                    data=zip_buffer.getvalue(),
+                    file_name=f"sistemist-toplu-donusum-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip",
+                    mime="application/zip",
+                    key="download_standard_batch_zip",
+                    use_container_width=True
+                )
 
-                            zip_file.writestr(
-                                output_name,
-                                image_bytes
-                            )
-
-                            success_count += 1
-
-                        except Exception:
-                            failed_count += 1
-
-                        progress.progress(
-                            (index + 1)
-                            / len(uploaded_images)
-                        )
-
-                zip_buffer.seek(0)
-
-                if success_count:
-
-                    add_history(
-                        "Toplu Dönüştürme",
-                        "Başarılı",
-                        f"{success_count} görsel dönüştürüldü",
-                        success_count
-                    )
-
-                    st.success(
-                        f"{success_count} görsel başarıyla dönüştürüldü."
-                    )
-
-                    st.download_button(
-                        "DÖNÜŞTÜRÜLEN GÖRSELLERİ İNDİR",
-                        data=zip_buffer.getvalue(),
-                        file_name=(
-                            "sistemist-toplu-donusum-"
-                            f"{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip"
-                        ),
-                        mime="application/zip"
-                    )
-
-                if failed_count:
-
-                    st.warning(
-                        f"{failed_count} görsel işlenemedi."
-                    )
+        if failed_count:
+            st.warning(f"{failed_count} görsel çıktısı işlenemedi.")
     app_footer()
 
 
@@ -3546,7 +3741,6 @@ elif st.session_state.current_page == "Yardım Merkezi":
     ):
         st.write(
             """
-            1. Trendyol, Google, Instagram veya Amazon kalıbını seçin.
             1. Trendyol, Hepsiburada, N11, Pazarama, ÇiçekSepeti, idefix, Google, Instagram, Amazon veya Etsy kalıbını seçin.
             2. Görsellerinizi yükleyip kalite raporunu kontrol edin.
             3. Format, sıkıştırma, yerleşim ve dosya adı şablonunu belirleyin.
