@@ -34,7 +34,7 @@ APP_DIR = Path(__file__).resolve().parent
 APP_ICON = APP_DIR / "sistemist-icon.png"
 SIDEBAR_ICON_URL = "https://sistemist.com/wp-content/uploads/2026/09/sefafikonbuyuk.png"
 FAVICON_URL = "https://sistemist.com/wp-content/uploads/2026/08/ikon-sistemist-siyah.png"
-APP_VERSION = "8.5.3"
+APP_VERSION = "8.5.4"
 
 st.set_page_config(
     page_title="Sistemist Image Studio",
@@ -80,7 +80,7 @@ components.html(
                 manifest.setAttribute("rel", "manifest");
                 doc.head.appendChild(manifest);
             }
-            manifest.setAttribute("href", "/app/static/manifest.json?v=850");
+            manifest.setAttribute("href", "/app/static/manifest.json?v=854");
 
             let appleIcon = doc.head.querySelector('link[rel="apple-touch-icon"]');
             if (!appleIcon) {
@@ -88,7 +88,7 @@ components.html(
                 appleIcon.setAttribute("rel", "apple-touch-icon");
                 doc.head.appendChild(appleIcon);
             }
-            appleIcon.setAttribute("href", "/app/static/icon-192.png?v=850");
+            appleIcon.setAttribute("href", "/app/static/icon-192.png?v=854");
 
             ensureMeta("theme-color", "#0b1119");
             ensureMeta("mobile-web-app-capable", "yes");
@@ -192,11 +192,11 @@ components.html(
                 const button = doc.createElement("button");
                 button.id = "sis-pwa-install";
                 button.type = "button";
-                button.textContent = "Uygulamayı Yükle";
+                button.textContent = "⬇ Uygulamayı Yükle";
                 button.setAttribute("aria-label", "Sistemist Image Studio uygulamasını yükle");
                 button.style.cssText = [
-                    "position:fixed", "right:18px", "bottom:18px", "z-index:999999",
-                    "display:none", "border:0", "border-radius:12px", "padding:12px 18px",
+                    "position:fixed", "right:16px", "top:12px", "z-index:1000000",
+                    "display:block", "border:0", "border-radius:12px", "padding:12px 18px",
                     "background:#ff6a00", "color:#fff", "font:700 14px sans-serif",
                     "box-shadow:0 8px 28px rgba(0,0,0,.35)", "cursor:pointer"
                 ].join(";");
@@ -216,7 +216,13 @@ components.html(
                     });
                     button.addEventListener("click", async () => {
                         const promptEvent = win.__sisInstallPrompt;
-                        if (!promptEvent) return;
+                        if (!promptEvent) {
+                            win.alert(
+                                "Kurulum penceresi henüz hazır değil. Chrome veya Edge'in sağ üst menüsünden "
+                                + "‘Uygulamayı yükle’ seçeneğini kullanın. Seçenek görünmüyorsa sayfayı yenileyin."
+                            );
+                            return;
+                        }
                         promptEvent.prompt();
                         await promptEvent.userChoice;
                         win.__sisInstallPrompt = null;
