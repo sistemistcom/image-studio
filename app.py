@@ -34,7 +34,7 @@ APP_DIR = Path(__file__).resolve().parent
 APP_ICON = APP_DIR / "sistemist-icon.png"
 SIDEBAR_ICON_URL = "https://sistemist.com/wp-content/uploads/2026/09/sefafikonbuyuk.png"
 FAVICON_URL = "https://sistemist.com/wp-content/uploads/2026/08/ikon-sistemist-siyah.png"
-APP_VERSION = "8.1.0"
+APP_VERSION = "8.2.0"
 
 st.set_page_config(
     page_title="Sistemist Image Studio",
@@ -1415,6 +1415,137 @@ def read_image_excel(file_bytes):
     return headers, data, image_columns
 
 
+def read_sku_excel(file_bytes):
+    """İlk çalışma sayfasındaki başlıkları ve ürün satırlarını okur."""
+    workbook = load_workbook(
+        io.BytesIO(file_bytes),
+        read_only=True,
+        data_only=True
+    )
+    worksheet = workbook.active
+    rows = worksheet.iter_rows(values_only=True)
+
+    try:
+        first_row = next(rows)
+    except StopIteration:
+        workbook.close()
+        raise RuntimeError("Excel dosyası boş.")
+
+    headers = []
+    used_headers = set()
+    for index, value in enumerate(first_row, start=1):
+        header = str(value).strip() if value is not None else f"Sütun {index}"
+        original_header = header
+        suffix = 2
+        while header in used_headers:
+            header = f"{original_header} ({suffix})"
+            suffix += 1
+        used_headers.add(header)
+        headers.append(header)
+
+    data = []
+    excel_row = 2
+    for row in rows:
+        row_data = {
+            header: row[index] if index < len(row) else None
+            for index, header in enumerate(headers)
+        }
+        row_data["__excel_row__"] = excel_row
+        if any(value not in (None, "") for key, value in row_data.items() if key != "__excel_row__"):
+            data.append(row_data)
+        excel_row += 1
+
+    workbook.close()
+    return headers, data
+
+
+def sku_match_key(value):
+    """SKU ve dosya adlarını güvenli karşılaştırma anahtarına dönüştürür."""
+    value = str(value or "").strip().lower()
+    value = value.replace("ı", "i")
+    value = unicodedata.normalize("NFKD", value)
+    value = "".join(character for character in value if not unicodedata.combining(character))
+    value = re.sub(r"[^a-z0-9]+", "-", value)
+    return value.strip("-")
+
+
+def match_filename_to_sku(filename, sku_candidates):
+    """Dosya kökünü en uzun SKU'dan başlayarak tam veya sınır kontrollü eşleştirir."""
+    filename_key = sku_match_key(Path(filename).stem)
+    ordered_candidates = sorted(
+        sku_candidates,
+        key=lambda item: len(item[0]),
+        reverse=True
+    )
+    for normalized_sku, original_sku in ordered_candidates:
+        if filename_key == normalized_sku or filename_key.startswith(f"{normalized_sku}-"):
+            return original_sku
+    return None
+
+
+def build_sku_report(matched_rows, missing_rows, unmatched_rows, duplicate_rows, duplicate_sku_rows):
+    workbook = Workbook()
+    workbook.remove(workbook.active)
+
+    sheets = [
+        (
+            "Eşleşenler",
+            ["SKU", "Ürün Adı", "Orijinal Dosya", "Yeni Dosya", "Görsel Sırası", "Durum"],
+            matched_rows,
+        ),
+        (
+            "Eksik Görseller",
+            ["SKU", "Ürün Adı", "Excel Satırı", "Durum"],
+            missing_rows,
+        ),
+        (
+            "Eşleşmeyen Dosyalar",
+            ["Dosya", "Durum"],
+            unmatched_rows,
+        ),
+        (
+            "Tekrarlanan Görseller",
+            ["Dosya", "Aynı İçerikteki Dosya", "Durum"],
+            duplicate_rows,
+        ),
+        (
+            "Tekrarlanan SKU",
+            ["SKU", "İlk Excel Satırı", "Tekrar Eden Satır", "Durum"],
+            duplicate_sku_rows,
+        ),
+    ]
+
+    for title, headers, rows in sheets:
+        worksheet = workbook.create_sheet(title)
+        worksheet.append(headers)
+        for row in rows:
+            worksheet.append(row)
+        worksheet.freeze_panes = "A2"
+        for column_index, header in enumerate(headers, start=1):
+            worksheet.column_dimensions[chr(64 + column_index)].width = max(14, min(42, len(header) + 8))
+
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def build_sku_template():
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Ürünler"
+    worksheet.append(["Stok Kodu", "Ürün Adı"])
+    worksheet.append(["ABC123", "Siyah Spor Ayakkabı"])
+    worksheet.append(["DEF456", "Mavi Kot Pantolon"])
+    worksheet.freeze_panes = "A2"
+    worksheet.column_dimensions["A"].width = 24
+    worksheet.column_dimensions["B"].width = 42
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
 def flatten_to_rgb(image, background="white"):
     if image.mode in ("RGBA", "LA"):
         rgba = image.convert("RGBA")
@@ -1894,6 +2025,9 @@ with st.sidebar:
 
     if st.button("▦ Pazaryeri Hazırlama", key="nav_marketplace"):
         go_to("Pazaryeri Hazırlama")
+
+    if st.button("⌗ Excel–SKU Eşleştirme", key="nav_sku_match"):
+        go_to("Excel–SKU Eşleştirme")
 
     if st.button("↙ URL → Görsel", key="nav_url_image"):
         go_to("URL → Görsel")
@@ -2522,6 +2656,284 @@ elif st.session_state.current_page == "Pazaryeri Hazırlama":
 
     else:
         st.info("Kalite raporu ve pazaryeri araçlarını kullanmak için görsellerinizi yükleyin.")
+
+    app_footer()
+
+
+# =========================================================
+# EXCEL - SKU MATCHING
+# =========================================================
+
+elif st.session_state.current_page == "Excel–SKU Eşleştirme":
+
+    page_header(
+        "Excel–SKU <span>Eşleştirme</span>",
+        "Ürün Excel'inizdeki stok kodlarını görsel dosya adlarıyla eşleştirin, eksikleri bulun ve düzenli adlandırılmış paketi indirin.",
+        "SİSTEMİST SKU MATCH ENGINE"
+    )
+
+    st.info(
+        "Görsel dosya adları stok koduyla başlamalıdır. Örnek: ABC123.jpg, ABC123-2.jpg veya ABC123_detay.png"
+    )
+
+    st.download_button(
+        "ÖRNEK EXCEL ŞABLONUNU İNDİR",
+        data=build_sku_template(),
+        file_name="sistemist-sku-sablonu.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key="download_sku_template"
+    )
+
+    sku_excel_file = st.file_uploader(
+        "Ürün Excel dosyasını yükleyin (.xlsx)",
+        type=["xlsx"],
+        key="sku_excel_file"
+    )
+
+    sku_headers = []
+    sku_excel_rows = []
+    if sku_excel_file:
+        try:
+            sku_headers, sku_excel_rows = read_sku_excel(sku_excel_file.getvalue())
+        except Exception as error:
+            st.error(f"Excel dosyası okunamadı: {error}")
+
+    if sku_headers:
+        normalized_headers = [sku_match_key(header) for header in sku_headers]
+        sku_keywords = ("sku", "stok-kodu", "stok-kod", "urun-kodu", "urun-kod", "barkod")
+        sku_default_index = next(
+            (index for index, header in enumerate(normalized_headers) if any(keyword in header for keyword in sku_keywords)),
+            0
+        )
+        product_keywords = ("urun-adi", "urun-ad", "product-name", "title", "baslik")
+        product_default_header = next(
+            (header for header, normalized in zip(sku_headers, normalized_headers)
+             if any(keyword in normalized for keyword in product_keywords)),
+            None
+        )
+
+        selector_col1, selector_col2 = st.columns(2)
+        with selector_col1:
+            sku_column = st.selectbox(
+                "Stok kodu / SKU sütunu",
+                sku_headers,
+                index=sku_default_index,
+                key="sku_column"
+            )
+        with selector_col2:
+            product_options = ["Kullanma"] + sku_headers
+            product_column = st.selectbox(
+                "Ürün adı sütunu (isteğe bağlı)",
+                product_options,
+                index=(product_options.index(product_default_header) if product_default_header else 0),
+                key="sku_product_column"
+            )
+
+        st.caption(
+            f"Excel'in ilk sayfasından {len(sku_excel_rows)} ürün satırı okundu. Başında sıfır bulunan stok kodlarını Excel'de metin biçiminde tutun."
+        )
+
+        sku_images = st.file_uploader(
+            "Ürün görsellerini seçin",
+            type=["jpg", "jpeg", "png", "webp", "gif", "bmp"],
+            accept_multiple_files=True,
+            key="sku_images"
+        )
+
+        if sku_images:
+            sku_images = render_image_gallery(sku_images, "sku_upload", page_size=24)
+
+        if sku_images:
+            sku_records = {}
+            duplicate_sku_rows = []
+
+            for excel_row in sku_excel_rows:
+                raw_sku = excel_row.get(sku_column)
+                if isinstance(raw_sku, float) and raw_sku.is_integer():
+                    raw_sku = int(raw_sku)
+                original_sku = str(raw_sku or "").strip()
+                normalized_sku = sku_match_key(original_sku)
+                if not normalized_sku:
+                    continue
+
+                product_value = ""
+                if product_column != "Kullanma":
+                    product_value = str(excel_row.get(product_column) or "").strip()
+
+                if normalized_sku in sku_records:
+                    duplicate_sku_rows.append([
+                        original_sku,
+                        sku_records[normalized_sku]["excel_row"],
+                        excel_row["__excel_row__"],
+                        "AYNI SKU EXCEL'DE BİRDEN FAZLA",
+                    ])
+                    continue
+
+                sku_records[normalized_sku] = {
+                    "sku": original_sku,
+                    "product": product_value,
+                    "excel_row": excel_row["__excel_row__"],
+                }
+
+            sku_candidates = [
+                (normalized_sku, record["sku"])
+                for normalized_sku, record in sku_records.items()
+            ]
+            original_to_key = {
+                record["sku"]: normalized_sku
+                for normalized_sku, record in sku_records.items()
+            }
+
+            analyzed_images = []
+            first_file_by_hash = {}
+            matched_sku_keys = set()
+
+            for uploaded_file in sku_images:
+                file_bytes = uploaded_file.getvalue()
+                content_hash = hashlib.sha256(file_bytes).hexdigest()
+                duplicate_of = first_file_by_hash.get(content_hash, "")
+                if not duplicate_of:
+                    first_file_by_hash[content_hash] = uploaded_file.name
+
+                matched_sku = match_filename_to_sku(uploaded_file.name, sku_candidates)
+                matched_key = original_to_key.get(matched_sku, "") if matched_sku else ""
+                if matched_key:
+                    matched_sku_keys.add(matched_key)
+
+                analyzed_images.append({
+                    "file": uploaded_file,
+                    "sku": matched_sku,
+                    "sku_key": matched_key,
+                    "duplicate_of": duplicate_of,
+                })
+
+            missing_records = [
+                record for normalized_sku, record in sku_records.items()
+                if normalized_sku not in matched_sku_keys
+            ]
+            unmatched_records = [item for item in analyzed_images if not item["sku"]]
+            duplicate_records = [item for item in analyzed_images if item["duplicate_of"]]
+            matched_records = [item for item in analyzed_images if item["sku"]]
+
+            metric1, metric2, metric3, metric4 = st.columns(4)
+            metric1.metric("Excel'deki SKU", len(sku_records))
+            metric2.metric("Eşleşen görsel", len(matched_records))
+            metric3.metric("Görseli eksik ürün", len(missing_records))
+            metric4.metric("Eşleşmeyen dosya", len(unmatched_records))
+
+            preview_rows = []
+            for item in analyzed_images:
+                record = sku_records.get(item["sku_key"], {})
+                if item["sku"]:
+                    status_text = "TEKRARLANAN GÖRSEL" if item["duplicate_of"] else "EŞLEŞTİ"
+                else:
+                    status_text = "SKU BULUNAMADI"
+                preview_rows.append({
+                    "Dosya": item["file"].name,
+                    "SKU": item["sku"] or "—",
+                    "Ürün": record.get("product", "") or "—",
+                    "Durum": status_text,
+                })
+
+            st.markdown('<div class="section-title">Eşleştirme sonucu</div>', unsafe_allow_html=True)
+            st.dataframe(preview_rows, use_container_width=True, hide_index=True)
+
+            naming_mode = st.radio(
+                "Yeni dosya adı",
+                ["SKU + sıra", "SKU + ürün adı + sıra"],
+                horizontal=True,
+                key="sku_naming_mode"
+            )
+            include_duplicates = st.checkbox(
+                "Aynı içeriğe sahip tekrarlanan görselleri pakete dahil et",
+                value=False,
+                key="sku_include_duplicates"
+            )
+
+            if st.button(
+                "SKU EŞLEŞTİRME PAKETİNİ OLUŞTUR",
+                key="create_sku_package",
+                disabled=not matched_records,
+                use_container_width=True
+            ):
+                zip_buffer = io.BytesIO()
+                matched_report_rows = []
+                image_sequence = {}
+
+                missing_report_rows = [
+                    [record["sku"], record["product"], record["excel_row"], "GÖRSEL BULUNAMADI"]
+                    for record in missing_records
+                ]
+                unmatched_report_rows = [
+                    [item["file"].name, "DOSYA ADINDA EXCEL'DEKİ SKU BULUNAMADI"]
+                    for item in unmatched_records
+                ]
+                duplicate_report_rows = [
+                    [item["file"].name, item["duplicate_of"], "AYNI GÖRSEL İÇERİĞİ"]
+                    for item in duplicate_records
+                ]
+
+                with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                    for item in matched_records:
+                        record = sku_records[item["sku_key"]]
+                        if item["duplicate_of"] and not include_duplicates:
+                            matched_report_rows.append([
+                                record["sku"], record["product"], item["file"].name,
+                                "", "", "TEKRAR OLDUĞU İÇİN PAKETE ALINMADI",
+                            ])
+                            continue
+
+                        image_sequence[item["sku_key"]] = image_sequence.get(item["sku_key"], 0) + 1
+                        sequence = image_sequence[item["sku_key"]]
+                        clean_sku = clean_filename(record["sku"])
+                        if naming_mode == "SKU + ürün adı + sıra" and record["product"]:
+                            output_base = f"{clean_sku}-{clean_filename(record['product'])}-{sequence}"
+                        else:
+                            output_base = f"{clean_sku}-{sequence}"
+
+                        extension = Path(item["file"].name).suffix.lower()
+                        if extension not in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"):
+                            extension = ".jpg"
+                        output_name = f"{output_base}{extension}"
+                        zip_file.writestr(f"gorseller/{output_name}", item["file"].getvalue())
+                        matched_report_rows.append([
+                            record["sku"], record["product"], item["file"].name,
+                            output_name, sequence, "BAŞARILI",
+                        ])
+
+                    report_bytes = build_sku_report(
+                        matched_report_rows,
+                        missing_report_rows,
+                        unmatched_report_rows,
+                        duplicate_report_rows,
+                        duplicate_sku_rows,
+                    )
+                    zip_file.writestr("sku-eslestirme-raporu.xlsx", report_bytes)
+
+                zip_buffer.seek(0)
+                packaged_count = sum(1 for row in matched_report_rows if row[-1] == "BAŞARILI")
+                add_history(
+                    "Excel–SKU Eşleştirme",
+                    "Başarılı",
+                    f"{packaged_count} görsel eşleştirilip yeniden adlandırıldı",
+                    packaged_count
+                )
+                st.success(
+                    f"Paket hazırlandı: {packaged_count} görsel, {len(missing_records)} eksik ürün ve "
+                    f"{len(unmatched_records)} eşleşmeyen dosya raporlandı."
+                )
+                st.download_button(
+                    "SKU EŞLEŞTİRME ZIP PAKETİNİ İNDİR",
+                    data=zip_buffer.getvalue(),
+                    file_name=f"sistemist-sku-eslestirme-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip",
+                    mime="application/zip",
+                    key="download_sku_package",
+                    use_container_width=True
+                )
+        else:
+            st.info("Excel sütunlarını seçtikten sonra ürün görsellerinizi yükleyin.")
+    else:
+        st.info("Başlamak için ilk satırında sütun başlıkları bulunan Excel dosyanızı yükleyin.")
 
     app_footer()
 
@@ -3690,7 +4102,7 @@ elif st.session_state.current_page == "Genel Ayarlar":
         <div class="panel">
             <div class="panel-title">Uygulama Bilgileri</div>
             <div class="panel-subtitle">
-                Sistemist Image Studio Web V8.1 PRO
+                Sistemist Image Studio Web V8.2 PRO
             </div>
         </div>
         """),
