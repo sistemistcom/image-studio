@@ -31,7 +31,7 @@ import streamlit.components.v1 as components
 
 APP_DIR = Path(__file__).resolve().parent
 APP_ICON = APP_DIR / "sistemist-icon.png"
-BRAND_ICON_URL = "https://sistemist.com/wp-content/uploads/2026/08/ikon-sistemist-siyah.png"
+BRAND_ICON_URL = "https://sistemist.com/wp-content/uploads/2026/09/seffafikon.png"
 APP_VERSION = "8.0.0"
 
 st.set_page_config(
@@ -255,8 +255,14 @@ def apply_access_data(access_data, fallback_email=""):
     st.session_state.customer_package = access_data.get("package", "PRO")
     st.session_state.active_package = access_data.get("package", "PRO")
     st.session_state.customer_months = access_data.get("months", 0)
-    st.session_state.customer_start_date = access_data.get("start_date", "")
-    st.session_state.customer_end_date = access_data.get("end_date", "")
+    st.session_state.customer_start_date = (
+        access_data.get("start_date_formatted")
+        or access_data.get("start_date", "")
+    )
+    st.session_state.customer_end_date = (
+        access_data.get("end_date_formatted")
+        or access_data.get("end_date", "")
+    )
     st.session_state.customer_end_at = access_data.get("end_at", "")
     st.session_state.customer_remaining_days = max(
         0, int(access_data.get("remaining_days") or 0)
