@@ -34,7 +34,7 @@ APP_DIR = Path(__file__).resolve().parent
 APP_ICON = APP_DIR / "sistemist-icon.png"
 SIDEBAR_ICON_URL = "https://sistemist.com/wp-content/uploads/2026/09/sefafikonbuyuk.png"
 FAVICON_URL = "https://sistemist.com/wp-content/uploads/2026/08/ikon-sistemist-siyah.png"
-APP_VERSION = "8.5.2"
+APP_VERSION = "8.5.3"
 
 st.set_page_config(
     page_title="Sistemist Image Studio",
@@ -95,6 +95,94 @@ components.html(
             ensureMeta("apple-mobile-web-app-capable", "yes");
             ensureMeta("apple-mobile-web-app-status-bar-style", "black-translucent");
             ensureMeta("apple-mobile-web-app-title", "Image Studio");
+
+            // Streamlit sürümleri arasında kenar çubuğu düğmesinin test kimliği
+            // değişebildiği için bağımsız ve her zaman erişilebilir bir kurtarma
+            // düğmesi oluşturuyoruz.
+            const sidebarIsOpen = () => {
+                const sidebar = doc.querySelector('[data-testid="stSidebar"]');
+                if (!sidebar) return false;
+                const rect = sidebar.getBoundingClientRect();
+                const style = win.getComputedStyle(sidebar);
+                return rect.width > 80 && rect.right > 30
+                    && style.display !== "none" && style.visibility !== "hidden";
+            };
+
+            const findSidebarToggle = () => {
+                const selectors = [
+                    '[data-testid="stSidebarCollapsedControl"] button',
+                    'button[data-testid="stSidebarCollapsedControl"]',
+                    '[data-testid="collapsedControl"] button',
+                    'button[data-testid="collapsedControl"]',
+                    '[data-testid="stSidebarCollapseButton"] button',
+                    'button[data-testid="stSidebarCollapseButton"]'
+                ];
+                for (const selector of selectors) {
+                    const candidate = doc.querySelector(selector);
+                    if (candidate) return candidate;
+                }
+                return Array.from(doc.querySelectorAll("button")).find((candidate) => {
+                    if (candidate.id === "sis-sidebar-open") return false;
+                    const label = `${candidate.getAttribute("aria-label") || ""} ${candidate.title || ""}`;
+                    return /(sidebar|side bar|menü|menu|navigation)/i.test(label);
+                });
+            };
+
+            let sidebarButton = doc.getElementById("sis-sidebar-open");
+            if (!sidebarButton) {
+                sidebarButton = doc.createElement("button");
+                sidebarButton.id = "sis-sidebar-open";
+                sidebarButton.type = "button";
+                sidebarButton.textContent = "☰";
+                sidebarButton.title = "Sol menüyü aç";
+                sidebarButton.setAttribute("aria-label", "Sol menüyü aç");
+                sidebarButton.style.cssText = [
+                    "position:fixed", "left:12px", "top:12px", "z-index:1000000",
+                    "width:42px", "height:42px", "align-items:center", "justify-content:center",
+                    "border:1px solid #314258", "border-radius:10px", "background:#151f2b",
+                    "color:#fff", "font:700 23px sans-serif", "box-shadow:0 6px 20px rgba(0,0,0,.35)",
+                    "cursor:pointer"
+                ].join(";");
+                doc.body.appendChild(sidebarButton);
+                sidebarButton.addEventListener("click", () => {
+                    const nativeToggle = findSidebarToggle();
+                    if (nativeToggle) {
+                        nativeToggle.click();
+                    } else {
+                        const sidebar = doc.querySelector('[data-testid="stSidebar"]');
+                        if (sidebar) {
+                            sidebar.style.setProperty("display", "block", "important");
+                            sidebar.style.setProperty("visibility", "visible", "important");
+                            sidebar.style.setProperty("transform", "translateX(0)", "important");
+                            sidebar.style.setProperty("left", "0", "important");
+                        }
+                    }
+                    win.setTimeout(() => {
+                        sidebarButton.style.display = sidebarIsOpen() ? "none" : "flex";
+                    }, 350);
+                });
+            }
+
+            const syncSidebarButton = () => {
+                const desiredDisplay = sidebarIsOpen() ? "none" : "flex";
+                if (sidebarButton.style.display !== desiredDisplay) {
+                    sidebarButton.style.display = desiredDisplay;
+                }
+            };
+            syncSidebarButton();
+            win.setTimeout(syncSidebarButton, 500);
+            win.setTimeout(syncSidebarButton, 1500);
+
+            if (!win.__sisSidebarObserver) {
+                win.__sisSidebarObserver = new MutationObserver(syncSidebarButton);
+                win.__sisSidebarObserver.observe(doc.body, {
+                    childList: true,
+                    subtree: true,
+                    attributes: true,
+                    attributeFilter: ["aria-expanded", "style", "class"]
+                });
+                win.addEventListener("resize", syncSidebarButton);
+            }
 
             const isStandalone = win.matchMedia("(display-mode: standalone)").matches
                 || win.navigator.standalone === true;
@@ -649,11 +737,14 @@ footer {
 }
 
 [data-testid="stToolbar"] {
-    visibility: hidden !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
 }
 
 [data-testid="stSidebarCollapsedControl"],
 [data-testid="stSidebarCollapsedControl"] *,
+[data-testid="collapsedControl"],
+[data-testid="collapsedControl"] *,
 [data-testid="stSidebarCollapseButton"],
 [data-testid="stSidebarCollapseButton"] * {
     visibility: visible !important;
@@ -661,6 +752,7 @@ footer {
 }
 
 [data-testid="stSidebarCollapsedControl"] button,
+[data-testid="collapsedControl"] button,
 [data-testid="stSidebarCollapseButton"] button {
     background: #151f2b !important;
     color: #ffffff !important;
