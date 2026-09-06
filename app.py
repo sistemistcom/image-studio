@@ -19,7 +19,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError, BotoCoreError
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageFilter, ImageStat
 from openpyxl import load_workbook, Workbook
 
 import streamlit as st
@@ -34,7 +34,7 @@ APP_DIR = Path(__file__).resolve().parent
 APP_ICON = APP_DIR / "sistemist-icon.png"
 SIDEBAR_ICON_URL = "https://sistemist.com/wp-content/uploads/2026/09/sefafikonbuyuk.png"
 FAVICON_URL = "https://sistemist.com/wp-content/uploads/2026/08/ikon-sistemist-siyah.png"
-APP_VERSION = "8.0.0"
+APP_VERSION = "8.1.0"
 
 st.set_page_config(
     page_title="Sistemist Image Studio",
@@ -1488,6 +1488,180 @@ def prepare_image(image, target_size, fit_mode):
     return canvas
 
 
+MARKETPLACE_PRESETS = {
+    "Trendyol · Ürün Dikey": {
+        "slug": "trendyol",
+        "size": (1200, 1800),
+        "min_size": (600, 900),
+        "max_mb": 10,
+        "fit": "Sığdır",
+    },
+    "Google Merchant · Kare": {
+        "slug": "google",
+        "size": (1500, 1500),
+        "min_size": (500, 500),
+        "max_mb": 16,
+        "fit": "Sığdır",
+    },
+    "Instagram · Kare Gönderi": {
+        "slug": "instagram-kare",
+        "size": (1080, 1080),
+        "min_size": (500, 500),
+        "max_mb": 30,
+        "fit": "Kırp",
+    },
+    "Instagram · Dikey Gönderi": {
+        "slug": "instagram-dikey",
+        "size": (1080, 1350),
+        "min_size": (600, 750),
+        "max_mb": 30,
+        "fit": "Kırp",
+    },
+    "Instagram · Hikâye / Reels": {
+        "slug": "instagram-hikaye",
+        "size": (1080, 1920),
+        "min_size": (600, 1067),
+        "max_mb": 30,
+        "fit": "Kırp",
+    },
+    "Amazon · Ürün Kare": {
+        "slug": "amazon",
+        "size": (2000, 2000),
+        "min_size": (1000, 1000),
+        "max_mb": 10,
+        "fit": "Sığdır",
+    },
+}
+
+
+def apply_watermark(image, watermark_bytes, position="Sağ Alt", width_percent=18, opacity=75):
+    if not watermark_bytes:
+        return image
+
+    base = image.convert("RGBA")
+    watermark = Image.open(io.BytesIO(watermark_bytes)).convert("RGBA")
+    target_width = max(24, int(base.width * (width_percent / 100)))
+    target_height = max(1, int(watermark.height * target_width / max(1, watermark.width)))
+    watermark = watermark.resize((target_width, target_height), Image.Resampling.LANCZOS)
+
+    alpha = watermark.getchannel("A").point(
+        lambda value: int(value * max(0, min(100, opacity)) / 100)
+    )
+    watermark.putalpha(alpha)
+
+    margin = max(12, int(min(base.size) * 0.025))
+    positions = {
+        "Sol Üst": (margin, margin),
+        "Sağ Üst": (base.width - watermark.width - margin, margin),
+        "Sol Alt": (margin, base.height - watermark.height - margin),
+        "Sağ Alt": (base.width - watermark.width - margin, base.height - watermark.height - margin),
+        "Orta": ((base.width - watermark.width) // 2, (base.height - watermark.height) // 2),
+    }
+    base.alpha_composite(watermark, positions.get(position, positions["Sağ Alt"]))
+    return base
+
+
+def build_smart_filename(template, original_name, platform_slug, target_size, index):
+    width, height = target_size
+    values = {
+        "original": clean_filename(Path(original_name).stem),
+        "platform": clean_filename(platform_slug),
+        "width": str(width),
+        "height": str(height),
+        "index": f"{index:03d}",
+    }
+    result = template.strip() or "{original}-{index}"
+    for key, value in values.items():
+        result = result.replace("{" + key + "}", value)
+    result = re.sub(r"\{[^{}]+\}", "", result)
+    return clean_filename(result)
+
+
+def analyze_marketplace_image(uploaded_file, preset):
+    file_bytes = uploaded_file.getvalue()
+    issues = []
+
+    try:
+        with Image.open(io.BytesIO(file_bytes)) as source:
+            source = ImageOps.exif_transpose(source)
+            width, height = source.size
+            image_format = source.format or Path(uploaded_file.name).suffix.replace(".", "").upper()
+            grayscale = source.convert("L").resize((min(width, 600), min(height, 600)))
+            edges = grayscale.filter(ImageFilter.FIND_EDGES)
+            sharpness_score = round(ImageStat.Stat(edges).var[0], 1)
+
+            rgb = source.convert("RGB")
+            corner_size = max(1, min(width, height) // 20)
+            corners = [
+                rgb.crop((0, 0, corner_size, corner_size)),
+                rgb.crop((width - corner_size, 0, width, corner_size)),
+                rgb.crop((0, height - corner_size, corner_size, height)),
+                rgb.crop((width - corner_size, height - corner_size, width, height)),
+            ]
+            corner_brightness = sum(
+                sum(ImageStat.Stat(corner).mean) / 3 for corner in corners
+            ) / len(corners)
+    except Exception as error:
+        return {
+            "Sıra": 0,
+            "Dosya": uploaded_file.name,
+            "Durum": "HATALI",
+            "Sorunlar": f"Görsel okunamadı: {error}",
+        }
+
+    min_width, min_height = preset["min_size"]
+    target_width, target_height = preset["size"]
+    size_mb = len(file_bytes) / 1048576
+    source_ratio = width / max(1, height)
+    target_ratio = target_width / target_height
+
+    if width < min_width or height < min_height:
+        issues.append(f"Düşük çözünürlük; en az {min_width}×{min_height} önerilir")
+    if size_mb > preset["max_mb"]:
+        issues.append(f"Dosya {preset['max_mb']} MB sınırını aşıyor")
+    if abs(source_ratio - target_ratio) / target_ratio > 0.18:
+        issues.append("En-boy oranı seçilen kalıptan farklı; kırpma veya boşluk oluşabilir")
+    if sharpness_score < 80:
+        issues.append("Görsel bulanık veya düşük detaylı görünüyor")
+
+    sharpness_label = "Düşük" if sharpness_score < 80 else "Orta" if sharpness_score < 180 else "İyi"
+    background_label = "Açık/Beyaz" if corner_brightness >= 235 else "Renkli/Koyu"
+
+    return {
+        "Sıra": 0,
+        "Dosya": uploaded_file.name,
+        "Çözünürlük": f"{width} × {height}",
+        "Format": image_format,
+        "Boyut (MB)": round(size_mb, 3),
+        "Netlik": sharpness_label,
+        "Netlik Skoru": sharpness_score,
+        "Arka Plan": background_label,
+        "Durum": "UYGUN" if not issues else "KONTROL",
+        "Sorunlar": " · ".join(issues) if issues else "Sorun bulunmadı",
+    }
+
+
+def build_quality_report(records):
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Görsel Kalite Raporu"
+    headers = [
+        "Sıra", "Dosya", "Çözünürlük", "Format", "Boyut (MB)",
+        "Netlik", "Netlik Skoru", "Arka Plan", "Durum", "Sorunlar"
+    ]
+    worksheet.append(headers)
+    for record in records:
+        worksheet.append([record.get(header, "") for header in headers])
+    worksheet.freeze_panes = "A2"
+    widths = [8, 34, 18, 12, 14, 12, 16, 16, 13, 70]
+    for index, width in enumerate(widths, start=1):
+        worksheet.column_dimensions[chr(64 + index)].width = width
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
 def get_target_size(size_mode):
 
     sizes = {
@@ -1664,7 +1838,7 @@ with st.sidebar:
         f'{icon_html}'
         '<div><div class="brand-name">SİST<span>EM</span>İST</div></div>'
         '</div>'
-        '<div class="brand-version">IMAGE STUDIO WEB • V7.7 PRO</div>'
+        f'<div class="brand-version">IMAGE STUDIO WEB • V{APP_VERSION} PRO</div>'
         '</div>'
         '</div>'
     )
@@ -1674,6 +1848,9 @@ with st.sidebar:
 
     if st.button("⌂ Dashboard", key="nav_dashboard"):
         go_to("Dashboard")
+
+    if st.button("▦ Pazaryeri Hazırlama", key="nav_marketplace"):
+        go_to("Pazaryeri Hazırlama")
 
     if st.button("↙ URL → Görsel", key="nav_url_image"):
         go_to("URL → Görsel")
@@ -1909,6 +2086,270 @@ if st.session_state.current_page == "Dashboard":
         st.info(
             "Henüz işlem geçmişi bulunmuyor. URL → Görsel veya Görsel → URL aracını kullanarak başlayabilirsiniz."
         )
+
+    app_footer()
+
+
+# =========================================================
+# MARKETPLACE PREPARATION
+# =========================================================
+
+elif st.session_state.current_page == "Pazaryeri Hazırlama":
+
+    page_header(
+        "<span>Pazaryeri</span> Görsel Hazırlama",
+        "Görsellerinizi platform ölçülerine uyarlayın, kaliteyi kontrol edin, akıllı adlandırın, sıkıştırın ve filigran ekleyin.",
+        "SİSTEMİST MARKETPLACE ENGINE"
+    )
+
+    preset_name = st.selectbox(
+        "Hedef platform ve kullanım alanı",
+        list(MARKETPLACE_PRESETS.keys()),
+        key="marketplace_preset"
+    )
+    preset = MARKETPLACE_PRESETS[preset_name]
+    target_width, target_height = preset["size"]
+
+    metric1, metric2, metric3 = st.columns(3)
+    metric1.metric("Çıktı ölçüsü", f"{target_width} × {target_height} px")
+    metric2.metric("Önerilen minimum", f"{preset['min_size'][0]} × {preset['min_size'][1]} px")
+    metric3.metric("Dosya sınırı", f"{preset['max_mb']} MB")
+
+    marketplace_files = st.file_uploader(
+        "Pazaryeri için hazırlanacak görselleri seçin",
+        type=["jpg", "jpeg", "png", "webp", "gif", "bmp"],
+        accept_multiple_files=True,
+        key="marketplace_images"
+    )
+
+    if marketplace_files:
+        marketplace_files = render_image_gallery(
+            marketplace_files,
+            "marketplace_upload",
+            page_size=24
+        )
+
+    if marketplace_files:
+        st.markdown('<div class="section-title">Görsel kalite ve uygunluk raporu</div>', unsafe_allow_html=True)
+        quality_records = []
+        for index, uploaded_file in enumerate(marketplace_files, start=1):
+            report_record = analyze_marketplace_image(uploaded_file, preset)
+            report_record["Sıra"] = index
+            quality_records.append(report_record)
+
+        st.dataframe(
+            quality_records,
+            use_container_width=True,
+            hide_index=True,
+            column_order=["Sıra", "Dosya", "Çözünürlük", "Boyut (MB)", "Netlik", "Arka Plan", "Durum", "Sorunlar"]
+        )
+        st.download_button(
+            "KALİTE RAPORUNU EXCEL OLARAK İNDİR",
+            data=build_quality_report(quality_records),
+            file_name=f"sistemist-{preset['slug']}-kalite-raporu.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="download_marketplace_quality_report"
+        )
+
+        st.markdown('<div class="section-title">Çıktı ve sıkıştırma ayarları</div>', unsafe_allow_html=True)
+        setting1, setting2, setting3 = st.columns(3)
+        with setting1:
+            marketplace_format = st.selectbox(
+                "Çıktı formatı",
+                ["JPG", "WEBP", "PNG"],
+                key="marketplace_format"
+            )
+        with setting2:
+            fit_options = ["Sığdır", "Kırp"]
+            marketplace_fit = st.selectbox(
+                "Yerleşim modu",
+                fit_options,
+                index=fit_options.index(preset["fit"]),
+                key="marketplace_fit"
+            )
+        with setting3:
+            marketplace_quality = st.slider(
+                "Sıkıştırma kalitesi",
+                min_value=60,
+                max_value=100,
+                value=88,
+                help="Daha düşük değer daha küçük dosya oluşturur.",
+                key="marketplace_quality"
+            )
+
+        name_template = st.text_input(
+            "Akıllı dosya adı şablonu",
+            value="{platform}-{original}-{index}",
+            help="Kullanılabilir alanlar: {original}, {platform}, {width}, {height}, {index}",
+            key="marketplace_name_template"
+        )
+
+        st.markdown('<div class="section-title">Filigran ayarları</div>', unsafe_allow_html=True)
+        enable_watermark = st.checkbox("Filigran veya logo ekle", key="marketplace_watermark_enabled")
+        watermark_bytes = None
+        watermark_position = "Sağ Alt"
+        watermark_width = 18
+        watermark_opacity = 75
+
+        if enable_watermark:
+            watermark_file = st.file_uploader(
+                "Şeffaf PNG filigran/logonuzu yükleyin",
+                type=["png", "webp"],
+                key="marketplace_watermark_file"
+            )
+            watermark_col1, watermark_col2, watermark_col3 = st.columns(3)
+            with watermark_col1:
+                watermark_position = st.selectbox(
+                    "Filigran konumu",
+                    ["Sağ Alt", "Sol Alt", "Sağ Üst", "Sol Üst", "Orta"],
+                    key="marketplace_watermark_position"
+                )
+            with watermark_col2:
+                watermark_width = st.slider(
+                    "Filigran genişliği (%)", 5, 50, 18,
+                    key="marketplace_watermark_width"
+                )
+            with watermark_col3:
+                watermark_opacity = st.slider(
+                    "Filigran görünürlüğü (%)", 10, 100, 75,
+                    key="marketplace_watermark_opacity"
+                )
+            if watermark_file:
+                watermark_bytes = watermark_file.getvalue()
+            else:
+                st.info("Filigranı etkinleştirdiniz. İşlem için bir PNG veya WEBP logosu yükleyin.")
+
+        preview_source = marketplace_files[0]
+        preview_output_bytes = None
+        try:
+            with Image.open(io.BytesIO(preview_source.getvalue())) as preview_image:
+                preview_image.load()
+                preview_processed = prepare_image(
+                    preview_image,
+                    preset["size"],
+                    marketplace_fit
+                )
+                if watermark_bytes:
+                    preview_processed = apply_watermark(
+                        preview_processed,
+                        watermark_bytes,
+                        watermark_position,
+                        watermark_width,
+                        watermark_opacity
+                    )
+                preview_output_bytes, _ = save_image_to_buffer(
+                    preview_processed,
+                    marketplace_format,
+                    marketplace_quality
+                )
+        except Exception as error:
+            st.warning(f"Karşılaştırma önizlemesi oluşturulamadı: {error}")
+
+        if preview_output_bytes:
+            st.markdown('<div class="section-title">Önce – sonra karşılaştırması</div>', unsafe_allow_html=True)
+            before_col, after_col = st.columns(2)
+            with before_col:
+                st.markdown("**ÖNCE**")
+                st.image(preview_source.getvalue(), use_container_width=True)
+                st.caption(f"Orijinal · {format_size(len(preview_source.getvalue()))}")
+            with after_col:
+                st.markdown("**SONRA**")
+                st.image(preview_output_bytes, use_container_width=True)
+                st.caption(
+                    f"{target_width} × {target_height} px · {marketplace_format} · {format_size(len(preview_output_bytes))}"
+                )
+
+        process_disabled = bool(enable_watermark and not watermark_bytes)
+        if st.button(
+            "PAZARYERİ GÖRSELLERİNİ HAZIRLA",
+            key="process_marketplace_images",
+            disabled=process_disabled,
+            use_container_width=True
+        ):
+            zip_buffer = io.BytesIO()
+            total_before = 0
+            total_after = 0
+            success_count = 0
+            failed = []
+            used_output_names = set()
+            progress = st.progress(0)
+            status = st.empty()
+
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                for index, uploaded_file in enumerate(marketplace_files, start=1):
+                    try:
+                        status.info(f"Hazırlanıyor: {index}/{len(marketplace_files)}")
+                        source_bytes = uploaded_file.getvalue()
+                        with Image.open(io.BytesIO(source_bytes)) as source_image:
+                            source_image.load()
+                            processed = prepare_image(source_image, preset["size"], marketplace_fit)
+                            if watermark_bytes:
+                                processed = apply_watermark(
+                                    processed,
+                                    watermark_bytes,
+                                    watermark_position,
+                                    watermark_width,
+                                    watermark_opacity
+                                )
+                            output_bytes, extension = save_image_to_buffer(
+                                processed,
+                                marketplace_format,
+                                marketplace_quality
+                            )
+
+                        output_base = build_smart_filename(
+                            name_template,
+                            uploaded_file.name,
+                            preset["slug"],
+                            preset["size"],
+                            index
+                        )
+                        if output_base in used_output_names:
+                            output_base = f"{output_base}-{index:03d}"
+                        used_output_names.add(output_base)
+                        zip_file.writestr(f"{output_base}{extension}", output_bytes)
+                        total_before += len(source_bytes)
+                        total_after += len(output_bytes)
+                        success_count += 1
+                    except Exception as error:
+                        failed.append(f"{uploaded_file.name}: {error}")
+                    progress.progress(index / len(marketplace_files))
+
+            status.empty()
+            zip_buffer.seek(0)
+
+            if success_count:
+                saving_percent = (
+                    max(0, round((1 - total_after / total_before) * 100, 1))
+                    if total_before else 0
+                )
+                add_history(
+                    "Pazaryeri Hazırlama",
+                    "Başarılı",
+                    f"{preset_name}: {success_count} görsel hazırlandı",
+                    success_count
+                )
+                st.success(
+                    f"{success_count} görsel hazırlandı. Toplam boyut: "
+                    f"{format_size(total_before)} → {format_size(total_after)} · Kazanç: %{saving_percent}"
+                )
+                st.download_button(
+                    "HAZIRLANAN GÖRSELLERİ ZIP OLARAK İNDİR",
+                    data=zip_buffer.getvalue(),
+                    file_name=f"sistemist-{preset['slug']}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip",
+                    mime="application/zip",
+                    key="download_marketplace_zip",
+                    use_container_width=True
+                )
+
+            if failed:
+                st.warning(f"{len(failed)} görsel işlenemedi.")
+                with st.expander("İşlenemeyen dosyalar"):
+                    for error_message in failed:
+                        st.write(error_message)
+
+    else:
+        st.info("Kalite raporu ve pazaryeri araçlarını kullanmak için görsellerinizi yükleyin.")
 
     app_footer()
 
@@ -3006,7 +3447,7 @@ elif st.session_state.current_page == "Genel Ayarlar":
         <div class="panel">
             <div class="panel-title">Uygulama Bilgileri</div>
             <div class="panel-subtitle">
-                Sistemist Image Studio Web V7.7 PRO
+                Sistemist Image Studio Web V8.1 PRO
             </div>
         </div>
         """),
@@ -3052,8 +3493,23 @@ elif st.session_state.current_page == "Yardım Merkezi":
     )
 
     with st.expander(
-        "URL → Görsel nasıl kullanılır?",
+        "Pazaryeri Hazırlama nasıl kullanılır?",
         expanded=True
+    ):
+        st.write(
+            """
+            1. Trendyol, Google, Instagram veya Amazon kalıbını seçin.
+            2. Görsellerinizi yükleyip kalite raporunu kontrol edin.
+            3. Format, sıkıştırma, yerleşim ve dosya adı şablonunu belirleyin.
+            4. İsterseniz şeffaf PNG filigranınızı yükleyin.
+            5. Önce–sonra karşılaştırmasını inceleyin.
+            6. Hazırlanan görselleri ZIP olarak indirin.
+            """
+        )
+
+    with st.expander(
+        "URL → Görsel nasıl kullanılır?",
+        expanded=False
     ):
 
         st.write(
