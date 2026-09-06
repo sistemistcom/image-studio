@@ -3,10 +3,12 @@ import re
 import io
 import json
 import time
+import base64
+import html
 import zipfile
 import mimetypes
 import unicodedata
-from datetime import datetime
+from datetime import datetime, date
 from textwrap import dedent
 from pathlib import Path
 from urllib.parse import quote, urlparse
@@ -26,12 +28,13 @@ import streamlit as st
 # SİSTEMİST IMAGE STUDIO WEB V7.7 PRO
 # =========================================================
 
-os.environ["STREAMLIT_SERVER_ENABLE_CORS"] = "false"
-os.environ["STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION"] = "false"
+APP_DIR = Path(__file__).resolve().parent
+APP_ICON = APP_DIR / "sistemist-icon.png"
+APP_VERSION = "8.0.0"
 
 st.set_page_config(
     page_title="Sistemist Image Studio",
-    page_icon="◈",
+    page_icon=str(APP_ICON) if APP_ICON.exists() else "🟧",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -53,6 +56,8 @@ DEFAULTS = {
     "last_processed": 0,
     "last_success": 0,
     "active_package": "PRO",
+    "customer_username": "",
+    "customer_end_at": "",
 }
 
 for key, value in DEFAULTS.items():
@@ -167,6 +172,75 @@ def check_session_token(token):
         return False, {}
 
 
+def parse_access_date(value):
+    """API'den gelen ISO veya gün.ay.yıl biçimli tarihleri güvenle çözer."""
+    if not value:
+        return None
+
+    raw = str(value).strip()
+    for candidate in (raw[:10], raw):
+        for date_format in ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y"):
+            try:
+                return datetime.strptime(candidate, date_format).date()
+            except ValueError:
+                continue
+    return None
+
+
+def access_is_expired(access_data=None):
+    access_data = access_data or {}
+    api_expired = access_data.get("expired")
+    if api_expired is not None:
+        return bool(api_expired)
+
+    end_at_raw = str(
+        access_data.get("end_at") or st.session_state.customer_end_at or ""
+    ).strip()
+    if end_at_raw:
+        try:
+            end_at = datetime.fromisoformat(end_at_raw.replace("Z", "+00:00"))
+            now = datetime.now(end_at.tzinfo) if end_at.tzinfo else datetime.now()
+            return now >= end_at
+        except ValueError:
+            pass
+
+    end_date = parse_access_date(
+        access_data.get("end_date") or st.session_state.customer_end_date
+    )
+    return bool(end_date and date.today() > end_date)
+
+
+def apply_access_data(access_data, fallback_email=""):
+    """Login ve token doğrulama cevaplarını tek noktadan oturuma uygular."""
+    email = str(access_data.get("email") or fallback_email).strip().lower()
+    username = str(
+        access_data.get("username")
+        or access_data.get("user_login")
+        or email.split("@", 1)[0]
+        or "musteri"
+    ).strip()
+
+    st.session_state.customer_email = email
+    st.session_state.customer_username = username
+    st.session_state.customer_package = access_data.get("package", "PRO")
+    st.session_state.active_package = access_data.get("package", "PRO")
+    st.session_state.customer_months = access_data.get("months", 0)
+    st.session_state.customer_start_date = access_data.get("start_date", "")
+    st.session_state.customer_end_date = access_data.get("end_date", "")
+    st.session_state.customer_end_at = access_data.get("end_at", "")
+    st.session_state.customer_remaining_days = max(
+        0, int(access_data.get("remaining_days") or 0)
+    )
+
+
+def customer_storage_slug():
+    return clean_filename(
+        st.session_state.customer_username
+        or st.session_state.customer_email.split("@", 1)[0]
+        or "musteri"
+    ).lower()
+
+
 # =========================================================
 # LOGIN SESSION
 # =========================================================
@@ -212,44 +286,18 @@ if not st.session_state.access_checked:
         )
 
         if valid:
+            apply_access_data(access_data)
 
-            st.session_state.customer_email = (
-                access_data.get("email", "")
-            )
-
-            st.session_state.customer_package = (
-                access_data.get("package", "PRO")
-            )
-
-            st.session_state.active_package = (
-                access_data.get("package", "PRO")
-            )
-
-            # Erişim süresi bilgilerini mevcut oturuma ekle
-            st.session_state.customer_months = (
-                access_data.get("months", st.session_state.customer_months)
-            )
-
-            st.session_state.customer_start_date = (
-                access_data.get("start_date", st.session_state.customer_start_date)
-            )
-
-            st.session_state.customer_end_date = (
-                access_data.get("end_date", st.session_state.customer_end_date)
-            )
-
-            st.session_state.customer_remaining_days = (
-                access_data.get(
-                    "remaining_days",
-                    st.session_state.customer_remaining_days
-                )
-            )
+            if access_is_expired(access_data):
+                st.session_state.access_token = ""
+                st.session_state["license_expired"] = True
 
         else:
 
             st.session_state.access_token = ""
             st.session_state.customer_email = ""
             st.session_state.customer_package = ""
+            st.session_state.customer_username = ""
 
 
 # =========================================================
@@ -259,8 +307,17 @@ if not st.session_state.access_checked:
 # =========================================================
 # ERİŞİM KİLİDİ
 # =========================================================
+
+if st.session_state.access_token and access_is_expired():
+    st.session_state.access_token = ""
+    st.session_state["license_expired"] = True
 
 if not st.session_state.access_token:
+
+    if st.session_state.get("license_expired"):
+        st.error(
+            "Lisans süreniz sona erdi. Image Studio'yu kullanmaya devam etmek için lisansınızı yenileyin."
+        )
 
     st.markdown("""
 <div style="max-width:520px; margin:110px auto 25px auto; padding:42px; background:#151f2b; border:1px solid #2a394b; border-radius:22px;">
@@ -316,38 +373,18 @@ Image Studio'yu kullanabilmek için satın alma işleminizde kullandığınız e
 
             if success:
 
+                if access_is_expired(login_data):
+                    st.session_state["license_expired"] = True
+                    st.error(
+                        "Lisans süreniz sona erdi. Lütfen lisansınızı yenileyin."
+                    )
+                    st.stop()
+
                 st.session_state.access_token = login_data.get(
                     "token", ""
                 )
-
-                st.session_state.customer_email = login_data.get(
-                    "email", login_email
-                )
-
-                st.session_state.customer_package = login_data.get(
-                    "package", "PRO"
-                )
-
-                st.session_state.active_package = login_data.get(
-                    "package", "PRO"
-                )
-
-                # Satın alınan paketin süre bilgilerini kaydet
-                st.session_state.customer_months = login_data.get(
-                    "months", 0
-                )
-
-                st.session_state.customer_start_date = login_data.get(
-                    "start_date", ""
-                )
-
-                st.session_state.customer_end_date = login_data.get(
-                    "end_date", ""
-                )
-
-                st.session_state.customer_remaining_days = login_data.get(
-                    "remaining_days", 0
-                )
+                st.session_state["license_expired"] = False
+                apply_access_data(login_data, login_email)
 
                 st.success("Giriş başarılı. Image Studio açılıyor...")
 
@@ -465,32 +502,9 @@ footer,
 .brand-symbol {
     width: 46px;
     height: 46px;
-    position: relative;
+    object-fit: contain;
+    border-radius: 10px;
     flex-shrink: 0;
-}
-
-.brand-symbol::before {
-    content: "";
-    position: absolute;
-    width: 33px;
-    height: 33px;
-    top: 1px;
-    left: 4px;
-    border-radius: 10px 10px 4px 10px;
-    background: linear-gradient(135deg, #ff8a28, #ff5500);
-    transform: rotate(45deg);
-}
-
-.brand-symbol::after {
-    content: "";
-    position: absolute;
-    width: 25px;
-    height: 25px;
-    top: 15px;
-    left: 16px;
-    border-radius: 5px 10px 10px 4px;
-    background: #eef2f7;
-    transform: rotate(45deg);
 }
 
 .brand-name {
@@ -819,7 +833,8 @@ p, label {
    MAIN BUTTONS
 --------------------------------------------------------- */
 
-.stButton > button {
+.stButton > button,
+.stDownloadButton > button {
     min-height: 46px !important;
     border-radius: 11px !important;
     border: 1px solid #ff6a00 !important;
@@ -831,7 +846,8 @@ p, label {
     transition: all .2s ease !important;
 }
 
-.stButton > button:hover {
+.stButton > button:hover,
+.stDownloadButton > button:hover {
     border-color: #ff8c3b !important;
     background: linear-gradient(135deg, #ff8b30, #ff630b) !important;
     transform: translateY(-1px);
@@ -851,6 +867,30 @@ p, label {
     color: #edf3f8 !important;
     border: 1px solid #304154 !important;
     border-radius: 10px !important;
+}
+
+/* Streamlit/BaseWeb iç metinleri: koyu temada her zaman okunabilir */
+[data-baseweb="select"] > div,
+[data-baseweb="select"] span,
+[data-baseweb="input"] input,
+[data-baseweb="textarea"] textarea,
+[role="listbox"] li,
+[data-testid="stWidgetLabel"] p,
+[data-testid="stFileUploader"] small,
+[data-testid="stFileUploader"] span {
+    color: #f4f7fb !important;
+    opacity: 1 !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: #8fa0b3 !important;
+    opacity: 1 !important;
+}
+
+[data-testid="stSlider"] p,
+[data-testid="stSlider"] div {
+    color: #f4f7fb !important;
 }
 
 .stTextInput input:focus,
@@ -907,6 +947,37 @@ p, label {
 [data-testid="stFileUploader"] [data-testid="stBaseButton-secondary"] * {
     color: #ffffff !important;
     fill: #ffffff !important;
+}
+
+/* İndirme düğmelerinin beyaz varsayılan stile dönmesini engeller */
+[data-testid="stDownloadButton"] button,
+[data-testid="stDownloadButton"] button:disabled {
+    background: linear-gradient(135deg, #ff8a2a, #ff5b00) !important;
+    color: #ffffff !important;
+    border: 1px solid #ff7a18 !important;
+    opacity: 1 !important;
+}
+
+.workspace-guide {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 18px;
+}
+
+.guide-step {
+    background: #121c27;
+    border: 1px solid #2a3a4c;
+    border-radius: 15px;
+    padding: 18px;
+}
+
+.guide-number { color: var(--orange); font-weight: 800; font-size: 12px; }
+.guide-title { color: #f4f7fb; font-weight: 700; margin-top: 8px; }
+.guide-copy { color: #9aaabd; font-size: 12px; line-height: 1.6; margin-top: 6px; }
+
+@media (max-width: 900px) {
+    .workspace-guide { grid-template-columns: 1fr; }
 }
 
 
@@ -1392,11 +1463,20 @@ def go_to(page):
 
 with st.sidebar:
 
+    if APP_ICON.exists():
+        icon_base64 = base64.b64encode(APP_ICON.read_bytes()).decode("ascii")
+        icon_html = (
+            f'<img class="brand-symbol" src="data:image/png;base64,{icon_base64}" '
+            'alt="Sistemist">'
+        )
+    else:
+        icon_html = '<div class="brand-symbol"></div>'
+
     sidebar_brand_html = (
         '<div class="sidebar-wrap">'
         '<div class="sidebar-brand">'
         '<div class="brand-row">'
-        '<div class="brand-symbol"></div>'
+        f'{icon_html}'
         '<div><div class="brand-name">SİST<span>EM</span>İST</div></div>'
         '</div>'
         '<div class="brand-version">IMAGE STUDIO WEB • V7.7 PRO</div>'
@@ -1433,10 +1513,27 @@ with st.sidebar:
     if st.button("◉ Genel Ayarlar", key="nav_settings"):
         go_to("Genel Ayarlar")
 
+    if st.button("◷ Paket & Lisans", key="nav_license"):
+        go_to("Paket & Lisans")
+
     st.markdown('<div class="nav-label">Destek</div>', unsafe_allow_html=True)
 
     if st.button("? Yardım Merkezi", key="nav_help"):
         go_to("Yardım Merkezi")
+
+    safe_username = html.escape(st.session_state.customer_username or "Müşteri")
+    safe_email = html.escape(st.session_state.customer_email)
+    st.markdown(
+        f'<div class="sidebar-bottom"><div class="sidebar-status">'
+        f'<div class="status-dot"></div><div><div class="status-text">{safe_username}</div>'
+        f'<div class="status-sub">{safe_email}</div></div></div></div>',
+        unsafe_allow_html=True
+    )
+
+    if st.button("Çıkış Yap", key="logout"):
+        st.session_state.access_token = ""
+        st.session_state.access_checked = True
+        st.rerun()
 
 
 # =========================================================
@@ -1567,49 +1664,34 @@ if st.session_state.current_page == "Dashboard":
             unsafe_allow_html=True
         )
 
-    engine1, engine2 = st.columns(2)
-
-    with engine1:
-
-        st.markdown(
-            dedent("""
-            <div class="engine-card">
-                <div class="engine-icon">↙</div>
-                <div class="engine-title">URL → Görsel Motoru</div>
-                <div class="engine-text">
-                    Excel dosyanızdaki ürün görsel bağlantılarını toplu olarak
-                    indirin. JPG, PNG veya WEBP formatına dönüştürün ve
-                    profesyonel e-ticaret ölçülerinde yeniden hazırlayın.
+    st.markdown(
+        dedent("""
+        <div class="panel">
+            <div class="panel-title">Nasıl çalışır?</div>
+            <div class="panel-subtitle">
+                Soldaki menüden ihtiyacınız olan aracı seçin; işlemleriniz bu ekrandaki geçmişe otomatik eklenir.
+            </div>
+            <div class="workspace-guide">
+                <div class="guide-step">
+                    <div class="guide-number">01</div>
+                    <div class="guide-title">Kaynağı seçin</div>
+                    <div class="guide-copy">Excel bağlantılarıyla çalışın veya bilgisayarınızdaki görselleri yükleyin.</div>
+                </div>
+                <div class="guide-step">
+                    <div class="guide-number">02</div>
+                    <div class="guide-title">Ayarları belirleyin</div>
+                    <div class="guide-copy">Boyut, format, kalite ve yerleşim seçeneklerini ihtiyacınıza göre düzenleyin.</div>
+                </div>
+                <div class="guide-step">
+                    <div class="guide-number">03</div>
+                    <div class="guide-title">Sonucu alın</div>
+                    <div class="guide-copy">ZIP çıktısını veya müşterinize özel R2 URL raporunu güvenle indirin.</div>
                 </div>
             </div>
-            """),
-            unsafe_allow_html=True
-        )
-
-        if st.button("URL → GÖRSEL MOTORUNU AÇ", key="open_url_engine"):
-            go_to("URL → Görsel")
-            st.rerun()
-
-    with engine2:
-
-        st.markdown(
-            dedent("""
-            <div class="engine-card">
-                <div class="engine-icon">↗</div>
-                <div class="engine-title">Görsel → URL Motoru</div>
-                <div class="engine-text">
-                    Bilgisayarınızdaki görselleri doğrudan Cloudflare R2 bulut
-                    depolamaya yükleyin. Oluşturulan paylaşılabilir URL'leri
-                    otomatik olarak Excel raporuna dönüştürün.
-                </div>
-            </div>
-            """),
-            unsafe_allow_html=True
-        )
-
-        if st.button("GÖRSEL → URL MOTORUNU AÇ", key="open_image_engine"):
-            go_to("Görsel → URL")
-            st.rerun()
+        </div>
+        """),
+        unsafe_allow_html=True
+    )
 
     st.markdown(
         dedent("""
@@ -1979,13 +2061,19 @@ elif st.session_state.current_page == "Görsel → URL":
 
     else:
 
+        customer_root = f"musteriler/{customer_storage_slug()}"
+
         st.success(
             f"Cloud R2 bağlantısı yapılandırıldı. Bucket: {st.session_state.r2_bucket}"
         )
 
+        st.caption(
+            f"Müşteri klasörü: {customer_root} — tüm yüklemeler bu kullanıcı adına kaydedilir."
+        )
+
         upload_folder = st.text_input(
-            "R2 klasörü / prefix (isteğe bağlı)",
-            value="uploads",
+            "Alt klasör (isteğe bağlı)",
+            value="urunler",
             key="upload_folder"
         )
 
@@ -2054,7 +2142,8 @@ elif st.session_state.current_page == "Görsel → URL":
                         if clean_folder:
 
                             object_key = (
-                                f"{clean_folder}/"
+                                f"{customer_root}/"
+                                f"{clean_filename(clean_folder).lower()}/"
                                 f"{timestamp_prefix}/"
                                 f"{filename}"
                             )
@@ -2062,6 +2151,7 @@ elif st.session_state.current_page == "Görsel → URL":
                         else:
 
                             object_key = (
+                                f"{customer_root}/"
                                 f"{timestamp_prefix}/"
                                 f"{filename}"
                             )
@@ -2093,6 +2183,7 @@ elif st.session_state.current_page == "Görsel → URL":
                             )
 
                             results.append([
+                                st.session_state.customer_username,
                                 uploaded_file.name,
                                 object_key,
                                 Path(uploaded_file.name)
@@ -2112,6 +2203,7 @@ elif st.session_state.current_page == "Görsel → URL":
                         except Exception as error:
 
                             results.append([
+                                st.session_state.customer_username,
                                 uploaded_file.name,
                                 "",
                                 "",
@@ -2134,6 +2226,7 @@ elif st.session_state.current_page == "Görsel → URL":
                     worksheet.title = "Image URLs"
 
                     worksheet.append([
+                        "KULLANICI_ADI",
                         "DOSYA_ADI",
                         "R2_OBJECT_KEY",
                         "FORMAT",
@@ -2462,10 +2555,13 @@ elif st.session_state.current_page == "Cloud Dosyaları":
 
     else:
 
+        customer_root = f"musteriler/{customer_storage_slug()}/"
+
         prefix = st.text_input(
             "Klasör / Prefix filtresi",
-            value="",
-            placeholder="Örn: uploads/2026"
+            value=customer_root,
+            disabled=True,
+            help="Güvenlik için yalnızca giriş yapan müşterinin klasörü gösterilir."
         )
 
         if st.button(
@@ -2812,53 +2908,28 @@ elif st.session_state.current_page == "Paket & Lisans":
         "ABONELİK YÖNETİMİ"
     )
 
-    col1, col2, col3 = st.columns(3)
+    remaining_text = (
+        f"{st.session_state.customer_remaining_days} gün kaldı"
+        if st.session_state.customer_remaining_days > 0
+        else "Süre bilgisi API'den alınamadı"
+    )
+    st.markdown(
+        dedent(f"""
+        <div class="panel package-card">
+            <div class="system-read">AKTİF LİSANS</div>
+            <div class="panel-title">{html.escape(st.session_state.active_package)}</div>
+            <div class="panel-subtitle">
+                Kullanıcı: {html.escape(st.session_state.customer_username or '-') }<br>
+                Başlangıç: {html.escape(str(st.session_state.customer_start_date or '-'))}<br>
+                Bitiş: {html.escape(str(st.session_state.customer_end_date or '-'))}<br>
+                Durum: {remaining_text}
+            </div>
+        </div>
+        """),
+        unsafe_allow_html=True
+    )
 
-    packages = [
-        {
-            "name": "STARTER",
-            "desc": "Temel görsel işlemleri",
-            "price": "Başlangıç"
-        },
-        {
-            "name": "PRO",
-            "desc": "Tüm profesyonel araçlar",
-            "price": "AKTİF"
-        },
-        {
-            "name": "BUSINESS",
-            "desc": "Yüksek hacimli operasyon",
-            "price": "Kurumsal"
-        }
-    ]
-
-    for column, package in zip(
-        [col1, col2, col3],
-        packages
-    ):
-
-        with column:
-
-            package_html = (
-                f'<div class="panel package-card">'
-                f'<div class="system-read">{package["name"]}</div>'
-                f'<div class="panel-title">{package["price"]}</div>'
-                f'<div class="panel-subtitle">{package["desc"]}</div>'
-                f'</div>'
-            )
-            st.markdown(package_html, unsafe_allow_html=True)
-
-            if st.button(
-                f"{package['name']} PAKETİNİ SEÇ",
-                key=f"package_{package['name']}"
-            ):
-
-                st.session_state.active_package = (
-                    package["name"]
-                )
-
-                st.success(
-                    f"{package['name']} paketi aktif paket olarak seçildi."
-                )
+    renew_url = os.getenv("SISTEMIST_RENEW_URL", "https://sistemist.com")
+    st.link_button("LİSANSI YENİLE", renew_url, use_container_width=False)
 
     app_footer()
