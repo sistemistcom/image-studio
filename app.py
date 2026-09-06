@@ -1496,6 +1496,41 @@ MARKETPLACE_PRESETS = {
         "max_mb": 10,
         "fit": "Sığdır",
     },
+    "Hepsiburada · Ürün Kare": {
+        "slug": "hepsiburada",
+        "size": (1500, 1500),
+        "min_size": (1000, 1000),
+        "max_mb": 10,
+        "fit": "Sığdır",
+    },
+    "N11 · Ürün Kare": {
+        "slug": "n11",
+        "size": (1000, 1000),
+        "min_size": (600, 600),
+        "max_mb": 10,
+        "fit": "Sığdır",
+    },
+    "Pazarama · Ürün Kare": {
+        "slug": "pazarama",
+        "size": (1200, 1200),
+        "min_size": (800, 800),
+        "max_mb": 5,
+        "fit": "Sığdır",
+    },
+    "ÇiçekSepeti · Ürün Kare": {
+        "slug": "ciceksepeti",
+        "size": (1000, 1000),
+        "min_size": (600, 600),
+        "max_mb": 5,
+        "fit": "Sığdır",
+    },
+    "idefix · Ürün Kare": {
+        "slug": "idefix",
+        "size": (1200, 1200),
+        "min_size": (600, 600),
+        "max_mb": 10,
+        "fit": "Sığdır",
+    },
     "Google Merchant · Kare": {
         "slug": "google",
         "size": (1500, 1500),
@@ -1530,6 +1565,14 @@ MARKETPLACE_PRESETS = {
         "min_size": (1000, 1000),
         "max_mb": 10,
         "fit": "Sığdır",
+    },
+    "Etsy · Listeleme Kare": {
+        "slug": "etsy",
+        "size": (2000, 2000),
+        "min_size": (635, 635),
+        "max_mb": 1,
+        "fit": "Sığdır",
+        "note": "Etsy için JPG önerilir; şeffaf PNG alanları platformda siyah görünebilir.",
     },
 }
 
@@ -2114,6 +2157,11 @@ elif st.session_state.current_page == "Pazaryeri Hazırlama":
     metric1.metric("Çıktı ölçüsü", f"{target_width} × {target_height} px")
     metric2.metric("Önerilen minimum", f"{preset['min_size'][0]} × {preset['min_size'][1]} px")
     metric3.metric("Dosya sınırı", f"{preset['max_mb']} MB")
+    st.caption(
+        "Hazır ölçüler güvenli çalışma şablonlarıdır. Pazaryeri kuralları kategoriye ve zamana göre değişebileceği için yüklemeden önce satıcı panelindeki güncel uyarıları kontrol edin."
+    )
+    if preset.get("note"):
+        st.info(preset["note"])
 
     marketplace_files = st.file_uploader(
         "Pazaryeri için hazırlanacak görselleri seçin",
@@ -3499,6 +3547,7 @@ elif st.session_state.current_page == "Yardım Merkezi":
         st.write(
             """
             1. Trendyol, Google, Instagram veya Amazon kalıbını seçin.
+            1. Trendyol, Hepsiburada, N11, Pazarama, ÇiçekSepeti, idefix, Google, Instagram, Amazon veya Etsy kalıbını seçin.
             2. Görsellerinizi yükleyip kalite raporunu kontrol edin.
             3. Format, sıkıştırma, yerleşim ve dosya adı şablonunu belirleyin.
             4. İsterseniz şeffaf PNG filigranınızı yükleyin.
