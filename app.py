@@ -34,7 +34,7 @@ APP_DIR = Path(__file__).resolve().parent
 APP_ICON = APP_DIR / "sistemist-icon.png"
 SIDEBAR_ICON_URL = "https://sistemist.com/wp-content/uploads/2026/09/sefafikonbuyuk.png"
 FAVICON_URL = "https://sistemist.com/wp-content/uploads/2026/08/ikon-sistemist-siyah.png"
-APP_VERSION = "8.2.0"
+APP_VERSION = "8.3.0"
 
 st.set_page_config(
     page_title="Sistemist Image Studio",
@@ -1490,7 +1490,7 @@ def build_sku_report(matched_rows, missing_rows, unmatched_rows, duplicate_rows,
     sheets = [
         (
             "Eşleşenler",
-            ["SKU", "Ürün Adı", "Orijinal Dosya", "Yeni Dosya", "Görsel Sırası", "Durum"],
+            ["SKU", "Ürün Adı", "Orijinal Dosya", "Yeni Dosya", "Görsel Sırası", "Görsel URL", "Durum"],
             matched_rows,
         ),
         (
@@ -1540,6 +1540,52 @@ def build_sku_template():
     worksheet.freeze_panes = "A2"
     worksheet.column_dimensions["A"].width = 24
     worksheet.column_dimensions["B"].width = 42
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def build_sku_url_excel(sku_records, urls_by_sku, upload_detail_rows):
+    """Her ürün için Görsel 1, Görsel 2... sütunları bulunan URL Excel'i üretir."""
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Ürün Görsel Linkleri"
+    max_images = max([len(urls) for urls in urls_by_sku.values()] + [1])
+    headers = ["SKU", "Ürün Adı"] + [f"Görsel {index}" for index in range(1, max_images + 1)] + ["Durum"]
+    worksheet.append(headers)
+
+    for sku_key, record in sku_records.items():
+        urls = urls_by_sku.get(sku_key, [])
+        status = "BAŞARILI" if urls else "GÖRSEL BULUNAMADI VEYA YÜKLENEMEDİ"
+        row = [record["sku"], record["product"]] + urls + [""] * (max_images - len(urls)) + [status]
+        worksheet.append(row)
+        current_row = worksheet.max_row
+        for image_index, url in enumerate(urls, start=3):
+            cell = worksheet.cell(row=current_row, column=image_index)
+            cell.hyperlink = url
+            cell.style = "Hyperlink"
+
+    worksheet.freeze_panes = "A2"
+    worksheet.column_dimensions["A"].width = 24
+    worksheet.column_dimensions["B"].width = 42
+    for column_index in range(3, 3 + max_images):
+        worksheet.column_dimensions[chr(64 + column_index)].width = 70
+    worksheet.column_dimensions[chr(64 + len(headers))].width = 38
+
+    detail_sheet = workbook.create_sheet("Yükleme Detayı")
+    detail_headers = ["SKU", "Ürün Adı", "Orijinal Dosya", "Yeni Dosya", "R2 Yolu", "Görsel URL", "Durum"]
+    detail_sheet.append(detail_headers)
+    for detail_row in upload_detail_rows:
+        detail_sheet.append(detail_row)
+        if detail_row[5]:
+            url_cell = detail_sheet.cell(row=detail_sheet.max_row, column=6)
+            url_cell.hyperlink = detail_row[5]
+            url_cell.style = "Hyperlink"
+    detail_sheet.freeze_panes = "A2"
+    for column_index, width in enumerate([24, 38, 34, 34, 65, 70, 38], start=1):
+        detail_sheet.column_dimensions[chr(64 + column_index)].width = width
+
     buffer = io.BytesIO()
     workbook.save(buffer)
     buffer.seek(0)
@@ -2844,43 +2890,70 @@ elif st.session_state.current_page == "Excel–SKU Eşleştirme":
                 horizontal=True,
                 key="sku_naming_mode"
             )
+            output_method = st.radio(
+                "Çıktı yöntemi",
+                ["R2'ye yükle ve linkli Excel oluştur", "R2 linkli Excel + ZIP oluştur"],
+                horizontal=True,
+                key="sku_output_method"
+            )
             include_duplicates = st.checkbox(
                 "Aynı içeriğe sahip tekrarlanan görselleri pakete dahil et",
                 value=False,
                 key="sku_include_duplicates"
             )
 
+            if not r2_is_configured():
+                st.warning(
+                    "Link oluşturmak için Cloudflare R2 bağlantısının ve Public URL bilgisinin yapılandırılması gerekir."
+                )
+                if st.button("CLOUD R2 AYARLARINA GİT", key="go_r2_from_sku"):
+                    go_to("Cloud R2 Ayarları")
+                    st.rerun()
+
             if st.button(
-                "SKU EŞLEŞTİRME PAKETİNİ OLUŞTUR",
+                "R2'YE YÜKLE VE LİNKLİ EXCEL OLUŞTUR",
                 key="create_sku_package",
-                disabled=not matched_records,
+                disabled=not matched_records or not r2_is_configured(),
                 use_container_width=True
             ):
-                zip_buffer = io.BytesIO()
-                matched_report_rows = []
-                image_sequence = {}
+                try:
+                    s3_client = get_r2_client()
+                    matched_report_rows = []
+                    upload_detail_rows = []
+                    urls_by_sku = {}
+                    image_sequence = {}
+                    packaged_files = []
+                    failed_uploads = 0
+                    upload_time = datetime.now().strftime("%Y/%m/%d/%H%M%S")
+                    customer_root = f"musteriler/{customer_storage_slug()}"
+                    progress = st.progress(0)
+                    status = st.empty()
 
-                missing_report_rows = [
-                    [record["sku"], record["product"], record["excel_row"], "GÖRSEL BULUNAMADI"]
-                    for record in missing_records
-                ]
-                unmatched_report_rows = [
-                    [item["file"].name, "DOSYA ADINDA EXCEL'DEKİ SKU BULUNAMADI"]
-                    for item in unmatched_records
-                ]
-                duplicate_report_rows = [
-                    [item["file"].name, item["duplicate_of"], "AYNI GÖRSEL İÇERİĞİ"]
-                    for item in duplicate_records
-                ]
+                    missing_report_rows = [
+                        [record["sku"], record["product"], record["excel_row"], "GÖRSEL BULUNAMADI"]
+                        for record in missing_records
+                    ]
+                    unmatched_report_rows = [
+                        [item["file"].name, "DOSYA ADINDA EXCEL'DEKİ SKU BULUNAMADI"]
+                        for item in unmatched_records
+                    ]
+                    duplicate_report_rows = [
+                        [item["file"].name, item["duplicate_of"], "AYNI GÖRSEL İÇERİĞİ"]
+                        for item in duplicate_records
+                    ]
 
-                with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
                     for item in matched_records:
                         record = sku_records[item["sku_key"]]
                         if item["duplicate_of"] and not include_duplicates:
                             matched_report_rows.append([
                                 record["sku"], record["product"], item["file"].name,
-                                "", "", "TEKRAR OLDUĞU İÇİN PAKETE ALINMADI",
+                                "", "", "", "TEKRAR OLDUĞU İÇİN YÜKLENMEDİ",
                             ])
+                            upload_detail_rows.append([
+                                record["sku"], record["product"], item["file"].name,
+                                "", "", "", "TEKRAR OLDUĞU İÇİN YÜKLENMEDİ",
+                            ])
+                            progress.progress(len(matched_report_rows) / len(matched_records))
                             continue
 
                         image_sequence[item["sku_key"]] = image_sequence.get(item["sku_key"], 0) + 1
@@ -2895,41 +2968,99 @@ elif st.session_state.current_page == "Excel–SKU Eşleştirme":
                         if extension not in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"):
                             extension = ".jpg"
                         output_name = f"{output_base}{extension}"
-                        zip_file.writestr(f"gorseller/{output_name}", item["file"].getvalue())
-                        matched_report_rows.append([
-                            record["sku"], record["product"], item["file"].name,
-                            output_name, sequence, "BAŞARILI",
-                        ])
+                        object_key = f"{customer_root}/sku-gorseller/{upload_time}/{output_name}"
+                        file_bytes = item["file"].getvalue()
+                        content_type = mimetypes.guess_type(output_name)[0] or "application/octet-stream"
+                        status.info(
+                            f"R2'ye yükleniyor: {len(matched_report_rows) + 1}/{len(matched_records)} · {output_name}"
+                        )
 
-                    report_bytes = build_sku_report(
+                        try:
+                            s3_client.put_object(
+                                Bucket=st.session_state.r2_bucket,
+                                Key=object_key,
+                                Body=file_bytes,
+                                ContentType=content_type
+                            )
+                            public_url = build_public_url(object_key)
+                            urls_by_sku.setdefault(item["sku_key"], []).append(public_url)
+                            packaged_files.append((output_name, file_bytes))
+                            matched_report_rows.append([
+                                record["sku"], record["product"], item["file"].name,
+                                output_name, sequence, public_url, "BAŞARILI",
+                            ])
+                            upload_detail_rows.append([
+                                record["sku"], record["product"], item["file"].name,
+                                output_name, object_key, public_url, "BAŞARILI",
+                            ])
+                        except Exception as upload_error:
+                            failed_uploads += 1
+                            error_status = f"HATA: {upload_error}"
+                            matched_report_rows.append([
+                                record["sku"], record["product"], item["file"].name,
+                                output_name, sequence, "", error_status,
+                            ])
+                            upload_detail_rows.append([
+                                record["sku"], record["product"], item["file"].name,
+                                output_name, object_key, "", error_status,
+                            ])
+                        progress.progress(len(matched_report_rows) / len(matched_records))
+
+                    status.empty()
+                    detailed_report_bytes = build_sku_report(
                         matched_report_rows,
                         missing_report_rows,
                         unmatched_report_rows,
                         duplicate_report_rows,
                         duplicate_sku_rows,
                     )
-                    zip_file.writestr("sku-eslestirme-raporu.xlsx", report_bytes)
+                    url_excel_bytes = build_sku_url_excel(
+                        sku_records,
+                        urls_by_sku,
+                        upload_detail_rows
+                    )
+                    uploaded_count = sum(len(urls) for urls in urls_by_sku.values())
+                    add_history(
+                        "Excel–SKU Linkleri",
+                        "Başarılı" if uploaded_count else "Hata",
+                        f"{uploaded_count} görsel R2'ye yüklendi ve linkli Excel oluşturuldu",
+                        uploaded_count
+                    )
 
-                zip_buffer.seek(0)
-                packaged_count = sum(1 for row in matched_report_rows if row[-1] == "BAŞARILI")
-                add_history(
-                    "Excel–SKU Eşleştirme",
-                    "Başarılı",
-                    f"{packaged_count} görsel eşleştirilip yeniden adlandırıldı",
-                    packaged_count
-                )
-                st.success(
-                    f"Paket hazırlandı: {packaged_count} görsel, {len(missing_records)} eksik ürün ve "
-                    f"{len(unmatched_records)} eşleşmeyen dosya raporlandı."
-                )
-                st.download_button(
-                    "SKU EŞLEŞTİRME ZIP PAKETİNİ İNDİR",
-                    data=zip_buffer.getvalue(),
-                    file_name=f"sistemist-sku-eslestirme-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip",
-                    mime="application/zip",
-                    key="download_sku_package",
-                    use_container_width=True
-                )
+                    if uploaded_count:
+                        st.success(
+                            f"{uploaded_count} görsel R2'ye yüklendi. Linkler SKU sırasına göre Excel'e yerleştirildi."
+                        )
+                        st.download_button(
+                            "GÖRSEL LİNKLİ EXCEL'İ İNDİR",
+                            data=url_excel_bytes,
+                            file_name=f"sistemist-sku-gorsel-linkleri-{datetime.now().strftime('%Y%m%d-%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key="download_sku_url_excel",
+                            use_container_width=True
+                        )
+
+                        if output_method == "R2 linkli Excel + ZIP oluştur":
+                            zip_buffer = io.BytesIO()
+                            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                                for output_name, file_bytes in packaged_files:
+                                    zip_file.writestr(f"gorseller/{output_name}", file_bytes)
+                                zip_file.writestr("gorsel-linkleri.xlsx", url_excel_bytes)
+                                zip_file.writestr("sku-eslestirme-raporu.xlsx", detailed_report_bytes)
+                            zip_buffer.seek(0)
+                            st.download_button(
+                                "LİNKLİ EXCEL + GÖRSELLER ZIP PAKETİNİ İNDİR",
+                                data=zip_buffer.getvalue(),
+                                file_name=f"sistemist-sku-linkli-paket-{datetime.now().strftime('%Y%m%d-%H%M%S')}.zip",
+                                mime="application/zip",
+                                key="download_sku_package",
+                                use_container_width=True
+                            )
+
+                    if failed_uploads:
+                        st.warning(f"{failed_uploads} görsel R2'ye yüklenemedi. Ayrıntılar Excel'deki Yükleme Detayı sayfasındadır.")
+                except Exception as error:
+                    st.error(f"Cloudflare R2 bağlantısı veya yükleme hatası: {error}")
         else:
             st.info("Excel sütunlarını seçtikten sonra ürün görsellerinizi yükleyin.")
     else:
@@ -4102,7 +4233,7 @@ elif st.session_state.current_page == "Genel Ayarlar":
         <div class="panel">
             <div class="panel-title">Uygulama Bilgileri</div>
             <div class="panel-subtitle">
-                Sistemist Image Studio Web V8.2 PRO
+                Sistemist Image Studio Web V8.3 PRO
             </div>
         </div>
         """),
