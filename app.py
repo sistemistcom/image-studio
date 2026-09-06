@@ -34,7 +34,7 @@ APP_DIR = Path(__file__).resolve().parent
 APP_ICON = APP_DIR / "sistemist-icon.png"
 SIDEBAR_ICON_URL = "https://sistemist.com/wp-content/uploads/2026/09/sefafikonbuyuk.png"
 FAVICON_URL = "https://sistemist.com/wp-content/uploads/2026/08/ikon-sistemist-siyah.png"
-APP_VERSION = "8.3.0"
+APP_VERSION = "8.4.0"
 
 st.set_page_config(
     page_title="Sistemist Image Studio",
@@ -2924,8 +2924,7 @@ elif st.session_state.current_page == "Excel–SKU Eşleştirme":
                     image_sequence = {}
                     packaged_files = []
                     failed_uploads = 0
-                    upload_time = datetime.now().strftime("%Y/%m/%d/%H%M%S")
-                    customer_root = f"musteriler/{customer_storage_slug()}"
+                    customer_root = customer_storage_slug()
                     progress = st.progress(0)
                     status = st.empty()
 
@@ -2968,7 +2967,7 @@ elif st.session_state.current_page == "Excel–SKU Eşleştirme":
                         if extension not in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"):
                             extension = ".jpg"
                         output_name = f"{output_base}{extension}"
-                        object_key = f"{customer_root}/sku-gorseller/{upload_time}/{output_name}"
+                        object_key = f"{customer_root}/sku-gorseller/{output_name}"
                         file_bytes = item["file"].getvalue()
                         content_type = mimetypes.guess_type(output_name)[0] or "application/octet-stream"
                         status.info(
@@ -3402,7 +3401,7 @@ elif st.session_state.current_page == "Görsel → URL":
 
     else:
 
-        customer_root = f"musteriler/{customer_storage_slug()}"
+        customer_root = customer_storage_slug()
 
         st.success(
             f"Cloud R2 bağlantısı yapılandırıldı. Bucket: {st.session_state.r2_bucket}"
@@ -3476,11 +3475,6 @@ elif st.session_state.current_page == "Görsel → URL":
                             f"{extension}"
                         )
 
-                        timestamp_prefix = (
-                            datetime.now()
-                            .strftime("%Y/%m/%d")
-                        )
-
                         clean_folder = (
                             upload_folder
                             .strip("/")
@@ -3492,7 +3486,6 @@ elif st.session_state.current_page == "Görsel → URL":
                             object_key = (
                                 f"{customer_root}/"
                                 f"{clean_filename(clean_folder).lower()}/"
-                                f"{timestamp_prefix}/"
                                 f"{filename}"
                             )
 
@@ -3500,7 +3493,6 @@ elif st.session_state.current_page == "Görsel → URL":
 
                             object_key = (
                                 f"{customer_root}/"
-                                f"{timestamp_prefix}/"
                                 f"{filename}"
                             )
 
@@ -3981,7 +3973,7 @@ elif st.session_state.current_page == "Cloud Dosyaları":
 
     else:
 
-        customer_root = f"musteriler/{customer_storage_slug()}/"
+        customer_root = f"{customer_storage_slug()}/"
 
         prefix = st.text_input(
             "Klasör / Prefix filtresi",
@@ -4233,7 +4225,7 @@ elif st.session_state.current_page == "Genel Ayarlar":
         <div class="panel">
             <div class="panel-title">Uygulama Bilgileri</div>
             <div class="panel-subtitle">
-                Sistemist Image Studio Web V8.3 PRO
+                Sistemist Image Studio Web V8.4 PRO
             </div>
         </div>
         """),
