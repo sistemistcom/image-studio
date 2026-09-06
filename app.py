@@ -34,7 +34,7 @@ APP_DIR = Path(__file__).resolve().parent
 APP_ICON = APP_DIR / "sistemist-icon.png"
 SIDEBAR_ICON_URL = "https://sistemist.com/wp-content/uploads/2026/09/sefafikonbuyuk.png"
 FAVICON_URL = "https://sistemist.com/wp-content/uploads/2026/08/ikon-sistemist-siyah.png"
-APP_VERSION = "8.4.0"
+APP_VERSION = "8.4.1"
 
 st.set_page_config(
     page_title="Sistemist Image Studio",
@@ -2882,7 +2882,11 @@ elif st.session_state.current_page == "Excel–SKU Eşleştirme":
                 })
 
             st.markdown('<div class="section-title">Eşleştirme sonucu</div>', unsafe_allow_html=True)
-            st.dataframe(preview_rows, use_container_width=True, hide_index=True)
+            st.info(
+                "Eşleştirme sonuçları hazırlanıyor. Görsel sayısına ve dosya boyutlarına göre bu işlem biraz sürebilir; lütfen bekleyin."
+            )
+            with st.spinner("Sonuç tablosu yükleniyor, lütfen bekleyin..."):
+                st.dataframe(preview_rows, use_container_width=True, hide_index=True)
 
             naming_mode = st.radio(
                 "Yeni dosya adı",
@@ -4225,7 +4229,7 @@ elif st.session_state.current_page == "Genel Ayarlar":
         <div class="panel">
             <div class="panel-title">Uygulama Bilgileri</div>
             <div class="panel-subtitle">
-                Sistemist Image Studio Web V8.4 PRO
+                Sistemist Image Studio Web V8.4.1 PRO
             </div>
         </div>
         """),
