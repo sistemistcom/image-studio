@@ -34,7 +34,7 @@ APP_DIR = Path(__file__).resolve().parent
 APP_ICON = APP_DIR / "sistemist-icon.png"
 SIDEBAR_ICON_URL = "https://sistemist.com/wp-content/uploads/2026/09/sefafikonbuyuk.png"
 FAVICON_URL = "https://sistemist.com/wp-content/uploads/2026/08/ikon-sistemist-siyah.png"
-APP_VERSION = "8.5.4"
+APP_VERSION = "8.6.0"
 
 st.set_page_config(
     page_title="Sistemist Image Studio",
@@ -80,7 +80,7 @@ components.html(
                 manifest.setAttribute("rel", "manifest");
                 doc.head.appendChild(manifest);
             }
-            manifest.setAttribute("href", "/app/static/manifest.json?v=854");
+            manifest.setAttribute("href", "/manifest.webmanifest?v=860");
 
             let appleIcon = doc.head.querySelector('link[rel="apple-touch-icon"]');
             if (!appleIcon) {
@@ -88,13 +88,18 @@ components.html(
                 appleIcon.setAttribute("rel", "apple-touch-icon");
                 doc.head.appendChild(appleIcon);
             }
-            appleIcon.setAttribute("href", "/app/static/icon-192.png?v=854");
+            appleIcon.setAttribute("href", "/app/static/icon-192.png?v=860");
 
             ensureMeta("theme-color", "#0b1119");
             ensureMeta("mobile-web-app-capable", "yes");
             ensureMeta("apple-mobile-web-app-capable", "yes");
             ensureMeta("apple-mobile-web-app-status-bar-style", "black-translucent");
             ensureMeta("apple-mobile-web-app-title", "Image Studio");
+
+            if ("serviceWorker" in win.navigator) {
+                win.navigator.serviceWorker.register("/service-worker.js", { scope: "/" })
+                    .catch((error) => console.debug("PWA service worker kaydı bekliyor.", error));
+            }
 
             // Streamlit sürümleri arasında kenar çubuğu düğmesinin test kimliği
             // değişebildiği için bağımsız ve her zaman erişilebilir bir kurtarma
@@ -590,7 +595,7 @@ if not st.session_state.access_token:
         )
 
     st.markdown("""
-<div style="max-width:520px; margin:110px auto 25px auto; padding:42px; background:#151f2b; border:1px solid #2a394b; border-radius:22px;">
+<div class="login-card" style="max-width:520px; margin:110px auto 25px auto; padding:42px; background:#151f2b; border:1px solid #2a394b; border-radius:22px;">
 
 <div style="color:#ff6a00; font-size:12px; font-weight:800; letter-spacing:2px; margin-bottom:16px;">
 SİSTEMİST IMAGE STUDIO
@@ -1388,6 +1393,168 @@ hr {
 .package-card .panel-subtitle{
     margin-bottom:0!important;
     color:#9aaabd!important;
+}
+
+/* ---------------------------------------------------------
+   MOBILE / TABLET
+--------------------------------------------------------- */
+
+@media (max-width: 768px) {
+    html, body, [data-testid="stAppViewContainer"] {
+        overflow-x: hidden !important;
+    }
+
+    [data-testid="stAppViewBlockContainer"],
+    .main .block-container {
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 4.25rem .85rem 3rem !important;
+    }
+
+    [data-testid="stSidebar"] {
+        width: min(86vw, 320px) !important;
+        min-width: min(86vw, 320px) !important;
+        z-index: 1000001 !important;
+    }
+
+    [data-testid="stHorizontalBlock"] {
+        flex-wrap: wrap !important;
+        gap: .75rem !important;
+    }
+
+    [data-testid="stHorizontalBlock"] > [data-testid="column"] {
+        flex: 1 1 100% !important;
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .hero {
+        padding: 22px 18px !important;
+        margin-bottom: 16px !important;
+        border-radius: 16px !important;
+    }
+
+    .hero::after {
+        width: 180px !important;
+        height: 180px !important;
+        right: -100px !important;
+        top: -110px !important;
+    }
+
+    .system-read {
+        font-size: 9px !important;
+        letter-spacing: 1.8px !important;
+    }
+
+    .hero-title {
+        font-size: 24px !important;
+        line-height: 1.2 !important;
+        letter-spacing: -.35px !important;
+    }
+
+    .hero-subtitle {
+        font-size: 13px !important;
+        line-height: 1.6 !important;
+        margin-top: 10px !important;
+    }
+
+    .panel {
+        padding: 18px !important;
+        margin-top: 14px !important;
+        border-radius: 16px !important;
+    }
+
+    .panel-title {
+        font-size: 18px !important;
+    }
+
+    .panel-subtitle {
+        margin-bottom: 16px !important;
+    }
+
+    .stat-card {
+        min-height: 112px !important;
+        padding: 16px !important;
+    }
+
+    .stat-icon {
+        margin-bottom: 10px !important;
+    }
+
+    .stat-value {
+        font-size: 23px !important;
+    }
+
+    .engine-card,
+    .package-card {
+        min-height: auto !important;
+        padding: 18px !important;
+    }
+
+    .workspace-guide {
+        grid-template-columns: 1fr !important;
+    }
+
+    .login-card {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 25px auto 16px !important;
+        padding: 24px 18px !important;
+        border-radius: 16px !important;
+    }
+
+    .login-card h1 {
+        font-size: 27px !important;
+    }
+
+    .stButton > button,
+    [data-testid="stDownloadButton"] > button,
+    [data-testid="stFormSubmitButton"] > button {
+        width: 100% !important;
+        min-height: 46px !important;
+    }
+
+    [data-testid="stFileUploader"],
+    [data-testid="stDataFrame"],
+    [data-testid="stTable"] {
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow-x: auto !important;
+    }
+
+    [data-testid="stImage"] img {
+        width: 100% !important;
+        height: auto !important;
+        object-fit: contain !important;
+    }
+
+    [data-baseweb="tab-list"] {
+        overflow-x: auto !important;
+        flex-wrap: nowrap !important;
+        scrollbar-width: thin;
+    }
+
+    [data-baseweb="tab"] {
+        flex: 0 0 auto !important;
+        white-space: nowrap !important;
+    }
+
+    div[data-baseweb="select"],
+    input, textarea {
+        max-width: 100% !important;
+    }
+
+    .app-footer {
+        margin-top: 28px !important;
+    }
+
+    #sis-pwa-install {
+        top: 10px !important;
+        right: 10px !important;
+        padding: 10px 12px !important;
+        font-size: 12px !important;
+        border-radius: 10px !important;
+    }
 }
 
 </style>
