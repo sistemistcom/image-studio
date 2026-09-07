@@ -34,7 +34,7 @@ APP_DIR = Path(__file__).resolve().parent
 APP_ICON = APP_DIR / "sistemist-icon.png"
 SIDEBAR_ICON_URL = "https://sistemist.com/wp-content/uploads/2026/09/sefafikonbuyuk.png"
 FAVICON_URL = "https://sistemist.com/wp-content/uploads/2026/08/ikon-sistemist-siyah.png"
-APP_VERSION = "8.6.2"
+APP_VERSION = "8.6.3"
 
 st.set_page_config(
     page_title="Sistemist Image Studio",
@@ -80,7 +80,7 @@ components.html(
                 manifest.setAttribute("rel", "manifest");
                 doc.head.appendChild(manifest);
             }
-            manifest.setAttribute("href", "/manifest.webmanifest?v=862");
+            manifest.setAttribute("href", "/manifest.webmanifest?v=863");
 
             let appleIcon = doc.head.querySelector('link[rel="apple-touch-icon"]');
             if (!appleIcon) {
@@ -88,7 +88,7 @@ components.html(
                 appleIcon.setAttribute("rel", "apple-touch-icon");
                 doc.head.appendChild(appleIcon);
             }
-            appleIcon.setAttribute("href", "/app/static/icon-192.png?v=862");
+            appleIcon.setAttribute("href", "/app/static/icon-192.png?v=863");
 
             ensureMeta("theme-color", "#0b1119");
             ensureMeta("mobile-web-app-capable", "yes");
@@ -110,7 +110,7 @@ components.html(
                 mobileSidebarStyle.id = "sis-mobile-sidebar-style";
                 mobileSidebarStyle.textContent = `
                     @media (max-width: 768px) {
-                        body.sis-mobile-sidebar-hidden [data-testid="stSidebar"] {
+                        html.sis-mobile-sidebar-hidden [data-testid="stSidebar"] {
                             transform: translateX(-110%) !important;
                             visibility: hidden !important;
                             pointer-events: none !important;
@@ -120,8 +120,17 @@ components.html(
                 doc.head.appendChild(mobileSidebarStyle);
             }
 
+            try {
+                if (win.matchMedia("(max-width: 768px)").matches
+                    && win.sessionStorage.getItem("sisMobileSidebarClosed") === "1") {
+                    doc.documentElement.classList.add("sis-mobile-sidebar-hidden");
+                }
+            } catch (error) {
+                console.debug("Mobil menü durumu okunamadı.", error);
+            }
+
             const sidebarIsOpen = () => {
-                if (doc.body.classList.contains("sis-mobile-sidebar-hidden")) return false;
+                if (doc.documentElement.classList.contains("sis-mobile-sidebar-hidden")) return false;
                 const sidebar = doc.querySelector('[data-testid="stSidebar"]');
                 if (!sidebar) return false;
                 const rect = sidebar.getBoundingClientRect();
@@ -167,8 +176,13 @@ components.html(
                 ].join(";");
                 doc.body.appendChild(sidebarButton);
                 sidebarButton.addEventListener("click", () => {
-                    if (doc.body.classList.contains("sis-mobile-sidebar-hidden")) {
-                        doc.body.classList.remove("sis-mobile-sidebar-hidden");
+                    if (doc.documentElement.classList.contains("sis-mobile-sidebar-hidden")) {
+                        doc.documentElement.classList.remove("sis-mobile-sidebar-hidden");
+                        try {
+                            win.sessionStorage.removeItem("sisMobileSidebarClosed");
+                        } catch (error) {
+                            console.debug("Mobil menü durumu temizlenemedi.", error);
+                        }
                         win.setTimeout(syncSidebarButton, 100);
                         return;
                     }
@@ -203,7 +217,12 @@ components.html(
                 if (!win.matchMedia("(max-width: 768px)").matches || !sidebarIsOpen()) {
                     return;
                 }
-                doc.body.classList.add("sis-mobile-sidebar-hidden");
+                doc.documentElement.classList.add("sis-mobile-sidebar-hidden");
+                try {
+                    win.sessionStorage.setItem("sisMobileSidebarClosed", "1");
+                } catch (error) {
+                    console.debug("Mobil menü durumu kaydedilemedi.", error);
+                }
                 syncSidebarButton();
             };
 
@@ -240,7 +259,12 @@ components.html(
                 });
                 win.addEventListener("resize", () => {
                     if (!win.matchMedia("(max-width: 768px)").matches) {
-                        doc.body.classList.remove("sis-mobile-sidebar-hidden");
+                        doc.documentElement.classList.remove("sis-mobile-sidebar-hidden");
+                        try {
+                            win.sessionStorage.removeItem("sisMobileSidebarClosed");
+                        } catch (error) {
+                            console.debug("Mobil menü durumu temizlenemedi.", error);
+                        }
                     }
                     syncSidebarButton();
                 });
