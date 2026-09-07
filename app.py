@@ -34,7 +34,7 @@ APP_DIR = Path(__file__).resolve().parent
 APP_ICON = APP_DIR / "sistemist-icon.png"
 SIDEBAR_ICON_URL = "https://sistemist.com/wp-content/uploads/2026/09/sefafikonbuyuk.png"
 FAVICON_URL = "https://sistemist.com/wp-content/uploads/2026/08/ikon-sistemist-siyah.png"
-APP_VERSION = "8.6.1"
+APP_VERSION = "8.6.2"
 
 st.set_page_config(
     page_title="Sistemist Image Studio",
@@ -80,7 +80,7 @@ components.html(
                 manifest.setAttribute("rel", "manifest");
                 doc.head.appendChild(manifest);
             }
-            manifest.setAttribute("href", "/manifest.webmanifest?v=861");
+            manifest.setAttribute("href", "/manifest.webmanifest?v=862");
 
             let appleIcon = doc.head.querySelector('link[rel="apple-touch-icon"]');
             if (!appleIcon) {
@@ -88,7 +88,7 @@ components.html(
                 appleIcon.setAttribute("rel", "apple-touch-icon");
                 doc.head.appendChild(appleIcon);
             }
-            appleIcon.setAttribute("href", "/app/static/icon-192.png?v=861");
+            appleIcon.setAttribute("href", "/app/static/icon-192.png?v=862");
 
             ensureMeta("theme-color", "#0b1119");
             ensureMeta("mobile-web-app-capable", "yes");
@@ -104,7 +104,24 @@ components.html(
             // Streamlit sürümleri arasında kenar çubuğu düğmesinin test kimliği
             // değişebildiği için bağımsız ve her zaman erişilebilir bir kurtarma
             // düğmesi oluşturuyoruz.
+            let mobileSidebarStyle = doc.getElementById("sis-mobile-sidebar-style");
+            if (!mobileSidebarStyle) {
+                mobileSidebarStyle = doc.createElement("style");
+                mobileSidebarStyle.id = "sis-mobile-sidebar-style";
+                mobileSidebarStyle.textContent = `
+                    @media (max-width: 768px) {
+                        body.sis-mobile-sidebar-hidden [data-testid="stSidebar"] {
+                            transform: translateX(-110%) !important;
+                            visibility: hidden !important;
+                            pointer-events: none !important;
+                        }
+                    }
+                `;
+                doc.head.appendChild(mobileSidebarStyle);
+            }
+
             const sidebarIsOpen = () => {
+                if (doc.body.classList.contains("sis-mobile-sidebar-hidden")) return false;
                 const sidebar = doc.querySelector('[data-testid="stSidebar"]');
                 if (!sidebar) return false;
                 const rect = sidebar.getBoundingClientRect();
@@ -150,6 +167,11 @@ components.html(
                 ].join(";");
                 doc.body.appendChild(sidebarButton);
                 sidebarButton.addEventListener("click", () => {
+                    if (doc.body.classList.contains("sis-mobile-sidebar-hidden")) {
+                        doc.body.classList.remove("sis-mobile-sidebar-hidden");
+                        win.setTimeout(syncSidebarButton, 100);
+                        return;
+                    }
                     const nativeToggle = findSidebarToggle();
                     if (nativeToggle) {
                         nativeToggle.click();
@@ -181,19 +203,28 @@ components.html(
                 if (!win.matchMedia("(max-width: 768px)").matches || !sidebarIsOpen()) {
                     return;
                 }
-
-                const nativeToggle = findSidebarToggle();
-                if (nativeToggle) {
-                    nativeToggle.click();
-                } else {
-                    const sidebar = doc.querySelector('[data-testid="stSidebar"]');
-                    if (sidebar) {
-                        sidebar.style.setProperty("transform", "translateX(-110%)", "important");
-                        sidebar.style.setProperty("visibility", "hidden", "important");
-                    }
-                }
-                win.setTimeout(syncSidebarButton, 350);
+                doc.body.classList.add("sis-mobile-sidebar-hidden");
+                syncSidebarButton();
             };
+
+            // Streamlit yeniden çizimi başlamadan önce mobil navigasyon
+            // tıklamasını da yakala. Böylece bileşen sırası veya sürümü ne
+            // olursa olsun menü seçimin hemen ardından kapanır.
+            if (win.__sisMobileNavHandler) {
+                doc.removeEventListener("click", win.__sisMobileNavHandler, true);
+            }
+            win.__sisMobileNavHandler = (event) => {
+                if (!win.matchMedia("(max-width: 768px)").matches) return;
+                const button = event.target.closest("button");
+                const sidebar = button && button.closest('[data-testid="stSidebar"]');
+                if (!button || !sidebar) return;
+                const label = (button.textContent || "").trim();
+                const isNavigation = /(Dashboard|Pazaryeri Hazırlama|Excel.*SKU|URL.*Görsel|Görsel.*URL|Toplu Dönüştürme|İşlem Geçmişi|Cloud Dosyaları|Cloud R2 Ayarları|Genel Ayarlar|Paket.*Lisans|Yardım Merkezi)/i.test(label);
+                if (isNavigation) {
+                    win.setTimeout(win.__sisCloseSidebarOnMobile, 20);
+                }
+            };
+            doc.addEventListener("click", win.__sisMobileNavHandler, true);
 
             syncSidebarButton();
             win.setTimeout(syncSidebarButton, 500);
@@ -207,7 +238,12 @@ components.html(
                     attributes: true,
                     attributeFilter: ["aria-expanded", "style", "class"]
                 });
-                win.addEventListener("resize", syncSidebarButton);
+                win.addEventListener("resize", () => {
+                    if (!win.matchMedia("(max-width: 768px)").matches) {
+                        doc.body.classList.remove("sis-mobile-sidebar-hidden");
+                    }
+                    syncSidebarButton();
+                });
             }
 
             const isStandalone = win.matchMedia("(display-mode: standalone)").matches
