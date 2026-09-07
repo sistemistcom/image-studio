@@ -34,7 +34,7 @@ APP_DIR = Path(__file__).resolve().parent
 APP_ICON = APP_DIR / "sistemist-icon.png"
 SIDEBAR_ICON_URL = "https://sistemist.com/wp-content/uploads/2026/09/sefafikonbuyuk.png"
 FAVICON_URL = "https://sistemist.com/wp-content/uploads/2026/08/ikon-sistemist-siyah.png"
-APP_VERSION = "8.6.0"
+APP_VERSION = "8.6.1"
 
 st.set_page_config(
     page_title="Sistemist Image Studio",
@@ -80,7 +80,7 @@ components.html(
                 manifest.setAttribute("rel", "manifest");
                 doc.head.appendChild(manifest);
             }
-            manifest.setAttribute("href", "/manifest.webmanifest?v=860");
+            manifest.setAttribute("href", "/manifest.webmanifest?v=861");
 
             let appleIcon = doc.head.querySelector('link[rel="apple-touch-icon"]');
             if (!appleIcon) {
@@ -88,7 +88,7 @@ components.html(
                 appleIcon.setAttribute("rel", "apple-touch-icon");
                 doc.head.appendChild(appleIcon);
             }
-            appleIcon.setAttribute("href", "/app/static/icon-192.png?v=860");
+            appleIcon.setAttribute("href", "/app/static/icon-192.png?v=861");
 
             ensureMeta("theme-color", "#0b1119");
             ensureMeta("mobile-web-app-capable", "yes");
@@ -174,6 +174,27 @@ components.html(
                     sidebarButton.style.display = desiredDisplay;
                 }
             };
+
+            // Menüden bir sayfa seçildiğinde telefonda içerik alanını yeniden
+            // tam genişliğe çıkarır. Masaüstü görünümünde menü açık kalır.
+            win.__sisCloseSidebarOnMobile = () => {
+                if (!win.matchMedia("(max-width: 768px)").matches || !sidebarIsOpen()) {
+                    return;
+                }
+
+                const nativeToggle = findSidebarToggle();
+                if (nativeToggle) {
+                    nativeToggle.click();
+                } else {
+                    const sidebar = doc.querySelector('[data-testid="stSidebar"]');
+                    if (sidebar) {
+                        sidebar.style.setProperty("transform", "translateX(-110%)", "important");
+                        sidebar.style.setProperty("visibility", "hidden", "important");
+                    }
+                }
+                win.setTimeout(syncSidebarButton, 350);
+            };
+
             syncSidebarButton();
             win.setTimeout(syncSidebarButton, 500);
             win.setTimeout(syncSidebarButton, 1500);
@@ -256,6 +277,7 @@ components.html(
 
 DEFAULTS = {
     "current_page": "Dashboard",
+    "close_sidebar_mobile": False,
     "history": [],
     "r2_endpoint": "",
     "r2_access_key": "",
@@ -2462,6 +2484,7 @@ def app_footer():
 
 def go_to(page):
     st.session_state.current_page = page
+    st.session_state.close_sidebar_mobile = True
 
 
 # =========================================================
@@ -2549,6 +2572,30 @@ with st.sidebar:
         st.session_state.access_checked = True
         delete_login_cookie(reload_page=True)
         st.stop()
+
+
+# Mobilde menü seçiminin ardından sol paneli otomatik kapatır. Bu küçük
+# bileşen yalnızca bir navigasyon düğmesine basılan yeniden çizimde çalışır.
+if st.session_state.get("close_sidebar_mobile", False):
+    st.session_state.close_sidebar_mobile = False
+    components.html(
+        """
+        <script>
+        (() => {
+            const win = window.parent;
+            const closeMenu = () => {
+                if (typeof win.__sisCloseSidebarOnMobile === "function") {
+                    win.__sisCloseSidebarOnMobile();
+                }
+            };
+            win.setTimeout(closeMenu, 80);
+            win.setTimeout(closeMenu, 350);
+        })();
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
 
 
 # =========================================================
