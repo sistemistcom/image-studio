@@ -343,7 +343,7 @@ DEFAULTS = {
     "r2_access_key": "",
     "r2_secret_key": "",
     "r2_bucket": "sistemist-image-studio",
-    "r2_public_url": "",
+    "r2_public_url": "https://gorsel.sistemist.com",
     "r2_region": "auto",
     "last_processed": 0,
     "last_success": 0,
