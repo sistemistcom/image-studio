@@ -4703,12 +4703,15 @@ elif st.session_state.current_page == "Cloud R2 Ayarları":
             key="save_r2_settings"
         ):
 
-            st.session_state.r2_endpoint = endpoint.strip()
-            st.session_state.r2_access_key = access_key.strip()
-            st.session_state.r2_secret_key = secret_key.strip()
-            st.session_state.r2_bucket = bucket.strip()
-            st.session_state.r2_public_url = public_url.strip()
-            st.session_state.r2_region = region.strip() or "auto"
+           st.session_state.r2_endpoint = endpoint.strip()
+           st.session_state.r2_access_key = access_key.strip()
+           st.session_state.r2_secret_key = secret_key.strip()
+           st.session_state.r2_bucket = bucket.strip()
+
+# Üretimde kullanılacak sabit R2 public domain
+st.session_state.r2_public_url = "https://gorsel.sistemist.com"
+
+st.session_state.r2_region = region.strip() or "auto"
 
             st.success(
                 "Cloudflare R2 ayarları mevcut oturum için kaydedildi."
